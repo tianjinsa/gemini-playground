@@ -1,4 +1,4 @@
-// 在文件顶部添加性能监测和资源延迟加载
+// Performance monitoring and resource loading
 /**
  * Performance monitoring utility
  */
@@ -123,7 +123,7 @@ import { ScreenRecorder } from './video/screen-recorder.js';
  * Initializes and manages the UI, audio, video, and WebSocket interactions.
  */
 
-// DOM Elements
+// DOM 元素
 const logsContainer = document.getElementById('logs-container');
 const messageInput = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
@@ -144,21 +144,23 @@ const voiceSelect = document.getElementById('voice-select');
 const fpsInput = document.getElementById('fps-input');
 const configToggle = document.getElementById('config-toggle');
 const configContainer = document.getElementById('config-container');
+const closeConfigBtn = document.querySelector('.close-config');
 const systemInstructionInput = document.getElementById('system-instruction');
 systemInstructionInput.value = CONFIG.SYSTEM_INSTRUCTION.TEXT;
 const applyConfigButton = document.getElementById('apply-config');
 const responseTypeSelect = document.getElementById('response-type-select');
 
-// Load saved values from localStorage
+// 从localStorage加载保存的值
 const savedApiKey = localStorage.getItem('gemini_api_key');
 const savedVoice = localStorage.getItem('gemini_voice');
 const savedFPS = localStorage.getItem('video_fps');
 const savedSystemInstruction = localStorage.getItem('system_instruction');
-
+const savedTheme = localStorage.getItem('ui_theme') || 'light';
 
 if (savedApiKey) {
     apiKeyInput.value = savedApiKey;
 }
+
 if (savedVoice) {
     voiceSelect.value = savedVoice;
 }
@@ -166,23 +168,41 @@ if (savedVoice) {
 if (savedFPS) {
     fpsInput.value = savedFPS;
 }
+
 if (savedSystemInstruction) {
     systemInstructionInput.value = savedSystemInstruction;
     CONFIG.SYSTEM_INSTRUCTION.TEXT = savedSystemInstruction;
 }
 
-// Handle configuration panel toggle
+// 设置页面主题
+document.documentElement.setAttribute('data-theme', savedTheme);
+
+// 处理设置面板切换
 configToggle.addEventListener('click', () => {
-    configContainer.classList.toggle('active');
-    configToggle.classList.toggle('active');
+    configContainer.classList.add('active');
+});
+
+closeConfigBtn.addEventListener('click', () => {
+    configContainer.classList.remove('active');
 });
 
 applyConfigButton.addEventListener('click', () => {
-    configContainer.classList.toggle('active');
-    configToggle.classList.toggle('active');
+    configContainer.classList.remove('active');
+    
+    // 保存设置到本地存储
+    localStorage.setItem('gemini_api_key', apiKeyInput.value);
+    localStorage.setItem('gemini_voice', voiceSelect.value);
+    localStorage.setItem('system_instruction', systemInstructionInput.value);
+    localStorage.setItem('video_fps', fpsInput.value);
+    
+    // 更新系统指令
+    CONFIG.SYSTEM_INSTRUCTION.TEXT = systemInstructionInput.value;
+    
+    // 显示通知
+    showNotification('设置已保存');
 });
 
-// State variables
+// 状态变量
 let isRecording = false;
 let audioStreamer = null;
 let audioCtx = null;
@@ -194,13 +214,33 @@ let isScreenSharing = false;
 let screenRecorder = null;
 let isUsingTool = false;
 
-// Multimodal Client
+// 多模态客户端
 const client = new MultimodalLiveClient();
 
 /**
- * Logs a message to the UI.
- * @param {string} message - The message to log.
- * @param {string} [type='system'] - The type of the message (system, user, ai).
+ * 显示一个临时通知
+ * @param {string} message - 要显示的消息
+ * @param {string} [type='info'] - 通知类型 (info, success, error)
+ */
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.classList.add('notification', type, 'fade-in');
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
+
+/**
+ * 在UI上记录消息。
+ * @param {string} message - 要记录的消息。
+ * @param {string} [type='system'] - 消息类型 (system, user, ai).
  */
 function logMessage(message, type = 'system') {
     const logEntry = document.createElement('div');
@@ -231,21 +271,33 @@ function logMessage(message, type = 'system') {
     logEntry.appendChild(messageText);
 
     logsContainer.appendChild(logEntry);
-    logsContainer.scrollTop = logsContainer.scrollHeight;
+    
+    // 使用平滑滚动到底部
+    logsContainer.scrollTo({
+        top: logsContainer.scrollHeight,
+        behavior: 'smooth'
+    });
+    
+    // 添加渐入动画
+    logEntry.style.opacity = '0';
+    setTimeout(() => {
+        logEntry.style.opacity = '1';
+    }, 10);
 }
 
 /**
- * Updates the microphone icon based on the recording state.
+ * 根据录音状态更新麦克风图标。
  */
 function updateMicIcon() {
     micIcon.textContent = isRecording ? 'mic_off' : 'mic';
-    micButton.style.backgroundColor = isRecording ? '#ea4335' : '#4285f4';
+    micButton.style.backgroundColor = isRecording ? '#ea4335' : '';
+    micButton.classList.toggle('active', isRecording);
 }
 
 /**
- * Updates the audio visualizer based on the audio volume.
- * @param {number} volume - The audio volume (0.0 to 1.0).
- * @param {boolean} [isInput=false] - Whether the visualizer is for input audio.
+ * 根据音量更新音频可视化器。
+ * @param {number} volume - 音频音量(0.0 到 1.0)。
+ * @param {boolean} [isInput=false] - 是否为输入音频的可视化器。
  */
 function updateAudioVisualizer(volume, isInput = false) {
     const visualizer = isInput ? inputAudioVisualizer : audioVisualizer;
@@ -257,7 +309,7 @@ function updateAudioVisualizer(volume, isInput = false) {
     }
     
     audioBar.style.width = `${volume * 100}%`;
-    if (volume > 0) {
+    if (volume > 0.05) {
         audioBar.classList.add('active');
     } else {
         audioBar.classList.remove('active');
@@ -265,8 +317,8 @@ function updateAudioVisualizer(volume, isInput = false) {
 }
 
 /**
- * Initializes the audio context and streamer if not already initialized.
- * @returns {Promise<AudioStreamer>} The audio streamer instance.
+ * 如果尚未初始化，则初始化音频上下文和流传输器。
+ * @returns {Promise<AudioStreamer>} 音频流传输器实例。
  */
 async function ensureAudioInitialized() {
     if (!audioCtx) {
@@ -282,7 +334,7 @@ async function ensureAudioInitialized() {
 }
 
 /**
- * Handles the microphone toggle. Starts or stops audio recording.
+ * 处理麦克风切换。开始或停止音频录制。
  * @returns {Promise<void>}
  */
 async function handleMicToggle() {
@@ -300,7 +352,7 @@ async function handleMicToggle() {
                     client.sendRealtimeInput([{
                         mimeType: "audio/pcm;rate=16000",
                         data: base64Data,
-                        interrupt: true     // Model isn't interruptable when using tools, so we do it manually
+                        interrupt: true     // 使用工具时模型不可中断，所以我们手动执行
                     }]);
                 } else {
                     client.sendRealtimeInput([{
@@ -320,100 +372,116 @@ async function handleMicToggle() {
             
             await audioStreamer.resume();
             isRecording = true;
-            Logger.info('Microphone started');
-            logMessage('Microphone started', 'system');
+            Logger.info('麦克风已启动');
+            logMessage('麦克风已启动', 'system');
             updateMicIcon();
+            showNotification('麦克风已启动', 'success');
         } catch (error) {
-            Logger.error('Microphone error:', error);
-            logMessage(`Error: ${error.message}`, 'system');
+            Logger.error('麦克风错误:', error);
+            logMessage(`错误: ${error.message}`, 'system');
             isRecording = false;
             updateMicIcon();
+            showNotification('麦克风访问失败: ' + error.message, 'error');
         }
     } else {
         if (audioRecorder && isRecording) {
             audioRecorder.stop();
         }
         isRecording = false;
-        logMessage('Microphone stopped', 'system');
+        logMessage('麦克风已停止', 'system');
         updateMicIcon();
         updateAudioVisualizer(0, true);
     }
 }
 
 /**
- * Resumes the audio context if it's suspended.
+ * 如果音频上下文被暂停，则恢复它。
  * @returns {Promise<void>}
  */
 async function resumeAudioContext() {
     if (audioCtx && audioCtx.state === 'suspended') {
-        await audioCtx.resume();
+        try {
+            await audioCtx.resume();
+        } catch (error) {
+            Logger.error('恢复音频上下文时出错:', error);
+        }
     }
 }
 
 /**
- * Connects to the WebSocket server.
+ * 连接到WebSocket服务器。
  * @returns {Promise<void>}
  */
 async function connectToWebsocket() {
     if (!apiKeyInput.value) {
-        logMessage('Please input API Key', 'system');
+        logMessage('请输入API密钥', 'system');
+        showNotification('请输入API密钥', 'error');
         return;
     }
 
-    // Save values to localStorage
-    localStorage.setItem('gemini_api_key', apiKeyInput.value);
-    localStorage.setItem('gemini_voice', voiceSelect.value);
-    localStorage.setItem('system_instruction', systemInstructionInput.value);
-
-    const config = {
-        model: CONFIG.API.MODEL_NAME,
-        generationConfig: {
-            responseModalities: responseTypeSelect.value,
-            speechConfig: {
-                voiceConfig: { 
-                    prebuiltVoiceConfig: { 
-                        voiceName: voiceSelect.value    // You can change voice in the config.js file
-                    }
-                }
-            },
-
-        },
-        systemInstruction: {
-            parts: [{
-                text: systemInstructionInput.value     // You can change system instruction in the config.js file
-            }],
-        }
-    };  
-
     try {
-        await client.connect(config,apiKeyInput.value);
+        // 显示连接中状态
+        connectButton.textContent = '连接中...';
+        connectButton.disabled = true;
+        
+        // 保存值到localStorage
+        localStorage.setItem('gemini_api_key', apiKeyInput.value);
+        localStorage.setItem('gemini_voice', voiceSelect.value);
+        localStorage.setItem('system_instruction', systemInstructionInput.value);
+
+        const config = {
+            model: CONFIG.API.MODEL_NAME,
+            generationConfig: {
+                responseModalities: responseTypeSelect.value,
+                speechConfig: {
+                    voiceConfig: { 
+                        prebuiltVoiceConfig: { 
+                            voiceName: voiceSelect.value
+                        }
+                    }
+                },
+            },
+            systemInstruction: {
+                parts: [{
+                    text: systemInstructionInput.value
+                }],
+            }
+        };  
+
+        await client.connect(config, apiKeyInput.value);
         isConnected = true;
         await resumeAudioContext();
-        connectButton.textContent = 'Disconnect';
+        connectButton.textContent = '断开连接';
         connectButton.classList.add('connected');
+        connectButton.disabled = false;
         messageInput.disabled = false;
         sendButton.disabled = false;
         micButton.disabled = false;
         cameraButton.disabled = false;
         screenButton.disabled = false;
-        logMessage('Connected to Gemini 2.0 Flash Multimodal Live API', 'system');
+        
+        logMessage('已连接到Gemini 2.0 Flash多模态实时API', 'system');
+        showNotification('连接成功', 'success');
     } catch (error) {
-        const errorMessage = error.message || 'Unknown error';
-        Logger.error('Connection error:', error);
-        logMessage(`Connection error: ${errorMessage}`, 'system');
+        const errorMessage = error.message || '未知错误';
+        Logger.error('连接错误:', error);
+        logMessage(`连接错误: ${errorMessage}`, 'system');
         isConnected = false;
-        connectButton.textContent = 'Connect';
+        connectButton.textContent = '连接';
         connectButton.classList.remove('connected');
+        connectButton.disabled = false;
         messageInput.disabled = true;
         sendButton.disabled = true;
         micButton.disabled = true;
         cameraButton.disabled = true;
         screenButton.disabled = true;
+        
+        showNotification('连接失败: ' + errorMessage, 'error');
     }
 }
 
 /**
- * Disconnects from the WebSocket server.
+ * 断开与WebSocket服务器的连接。
  */
 function disconnectFromWebsocket() {
     client.disconnect();
@@ -427,14 +495,15 @@ function disconnectFromWebsocket() {
         isRecording = false;
         updateMicIcon();
     }
-    connectButton.textContent = 'Connect';
+    connectButton.textContent = '连接';
     connectButton.classList.remove('connected');
     messageInput.disabled = true;
     sendButton.disabled = true;
     micButton.disabled = true;
     cameraButton.disabled = true;
     screenButton.disabled = true;
-    logMessage('Disconnected from server', 'system');
+    logMessage('已断开与服务器的连接', 'system');
+    showNotification('已断开连接');
     
     if (videoManager) {
         stopVideo();
@@ -446,7 +515,7 @@ function disconnectFromWebsocket() {
 }
 
 /**
- * Handles sending a text message.
+ * 处理发送文本消息。
  */
 function handleSendMessage() {
     const message = messageInput.value.trim();
@@ -454,12 +523,15 @@ function handleSendMessage() {
         logMessage(message, 'user');
         client.send({ text: message });
         messageInput.value = '';
+        
+        // 聚焦回输入框
+        messageInput.focus();
     }
 }
 
-// Event Listeners
+// 事件监听器
 client.on('open', () => {
-    logMessage('WebSocket connection opened', 'system');
+    logMessage('WebSocket连接已打开', 'system');
 });
 
 client.on('log', (log) => {
@@ -467,7 +539,21 @@ client.on('log', (log) => {
 });
 
 client.on('close', (event) => {
-    logMessage(`WebSocket connection closed (code ${event.code})`, 'system');
+    logMessage(`WebSocket连接已关闭(代码 ${event.code})`, 'system');
+    
+    // 自动重置连接状态
+    if (isConnected) {
+        isConnected = false;
+        connectButton.textContent = '连接';
+        connectButton.classList.remove('connected');
+        messageInput.disabled = true;
+        sendButton.disabled = true;
+        micButton.disabled = true;
+        cameraButton.disabled = true;
+        screenButton.disabled = true;
+        
+        showNotification('连接已断开，请重新连接', 'error');
+    }
 });
 
 client.on('audio', async (data) => {
@@ -476,7 +562,7 @@ client.on('audio', async (data) => {
         const streamer = await ensureAudioInitialized();
         streamer.addPCM16(new Uint8Array(data));
     } catch (error) {
-        logMessage(`Error processing audio: ${error.message}`, 'system');
+        logMessage(`处理音频时出错: ${error.message}`, 'system');
     }
 });
 
@@ -484,10 +570,10 @@ client.on('content', (data) => {
     if (data.modelTurn) {
         if (data.modelTurn.parts.some(part => part.functionCall)) {
             isUsingTool = true;
-            Logger.info('Model is using a tool');
+            Logger.info('模型正在使用工具');
         } else if (data.modelTurn.parts.some(part => part.functionResponse)) {
             isUsingTool = false;
-            Logger.info('Tool usage completed');
+            Logger.info('工具使用完成');
         }
 
         const text = data.modelTurn.parts.map(part => part.text).join('');
@@ -500,35 +586,38 @@ client.on('content', (data) => {
 client.on('interrupted', () => {
     audioStreamer?.stop();
     isUsingTool = false;
-    Logger.info('Model interrupted');
-    logMessage('Model interrupted', 'system');
+    Logger.info('模型被中断');
+    logMessage('模型被中断', 'system');
 });
 
 client.on('setupcomplete', () => {
-    logMessage('Setup complete', 'system');
+    logMessage('设置完成', 'system');
 });
 
 client.on('turncomplete', () => {
     isUsingTool = false;
-    logMessage('Turn complete', 'system');
+    logMessage('对话回合结束', 'system');
 });
 
 client.on('error', (error) => {
     if (error instanceof ApplicationError) {
-        Logger.error(`Application error: ${error.message}`, error);
+        Logger.error(`应用错误: ${error.message}`, error);
     } else {
-        Logger.error('Unexpected error', error);
+        Logger.error('意外错误', error);
     }
-    logMessage(`Error: ${error.message}`, 'system');
+    logMessage(`错误: ${error.message}`, 'system');
+    showNotification('发生错误: ' + error.message, 'error');
 });
 
 client.on('message', (message) => {
     if (message.error) {
-        Logger.error('Server error:', message.error);
-        logMessage(`Server error: ${message.error}`, 'system');
+        Logger.error('服务器错误:', message.error);
+        logMessage(`服务器错误: ${message.error}`, 'system');
+        showNotification('服务器错误: ' + message.error, 'error');
     }
 });
 
+// 按钮事件监听器
 sendButton.addEventListener('click', handleSendMessage);
 messageInput.addEventListener('keypress', (event) => {
     if (event.key === 'Enter') {
@@ -546,23 +635,26 @@ connectButton.addEventListener('click', () => {
     }
 });
 
+// 初始化按钮状态
 messageInput.disabled = true;
 sendButton.disabled = true;
 micButton.disabled = true;
-connectButton.textContent = 'Connect';
+cameraButton.disabled = true;
+screenButton.disabled = true;
+connectButton.textContent = '连接';
 
 /**
- * Handles the video toggle. Starts or stops video streaming.
+ * 处理视频切换。开始或停止视频流。
  * @returns {Promise<void>}
  */
 async function handleVideoToggle() {
-    Logger.info('Video toggle clicked, current state:', { isVideoActive, isConnected });
+    Logger.info('视频切换被点击，当前状态:', { isVideoActive, isConnected });
     
     localStorage.setItem('video_fps', fpsInput.value);
 
     if (!isVideoActive) {
         try {
-            Logger.info('Attempting to start video');
+            Logger.info('尝试启动视频');
             if (!videoManager) {
                 videoManager = new VideoManager();
             }
@@ -576,25 +668,27 @@ async function handleVideoToggle() {
             isVideoActive = true;
             cameraIcon.textContent = 'videocam_off';
             cameraButton.classList.add('active');
-            Logger.info('Camera started successfully');
-            logMessage('Camera started', 'system');
+            Logger.info('摄像头启动成功');
+            logMessage('摄像头已启动', 'system');
+            showNotification('摄像头已启动', 'success');
 
         } catch (error) {
-            Logger.error('Camera error:', error);
-            logMessage(`Error: ${error.message}`, 'system');
+            Logger.error('摄像头错误:', error);
+            logMessage(`错误: ${error.message}`, 'system');
             isVideoActive = false;
             videoManager = null;
             cameraIcon.textContent = 'videocam';
             cameraButton.classList.remove('active');
+            showNotification('摄像头访问失败: ' + error.message, 'error');
         }
     } else {
-        Logger.info('Stopping video');
+        Logger.info('停止视频');
         stopVideo();
     }
 }
 
 /**
- * Stops the video streaming.
+ * 停止视频流。
  */
 function stopVideo() {
     if (videoManager) {
@@ -604,16 +698,15 @@ function stopVideo() {
     isVideoActive = false;
     cameraIcon.textContent = 'videocam';
     cameraButton.classList.remove('active');
-    logMessage('Camera stopped', 'system');
+    logMessage('摄像头已停止', 'system');
+    showNotification('摄像头已停止');
 }
 
 cameraButton.addEventListener('click', handleVideoToggle);
 stopVideoButton.addEventListener('click', stopVideo);
 
-cameraButton.disabled = true;
-
 /**
- * Handles the screen share toggle. Starts or stops screen sharing.
+ * 处理屏幕共享切换。开始或停止屏幕共享。
  * @returns {Promise<void>}
  */
 async function handleScreenShare() {
@@ -634,16 +727,18 @@ async function handleScreenShare() {
             isScreenSharing = true;
             screenIcon.textContent = 'stop_screen_share';
             screenButton.classList.add('active');
-            Logger.info('Screen sharing started');
-            logMessage('Screen sharing started', 'system');
+            Logger.info('屏幕共享已启动');
+            logMessage('屏幕共享已启动', 'system');
+            showNotification('屏幕共享已启动', 'success');
 
         } catch (error) {
-            Logger.error('Screen sharing error:', error);
-            logMessage(`Error: ${error.message}`, 'system');
+            Logger.error('屏幕共享错误:', error);
+            logMessage(`错误: ${error.message}`, 'system');
             isScreenSharing = false;
             screenIcon.textContent = 'screen_share';
             screenButton.classList.remove('active');
             screenContainer.style.display = 'none';
+            showNotification('屏幕共享失败: ' + error.message, 'error');
         }
     } else {
         stopScreenSharing();
@@ -651,7 +746,7 @@ async function handleScreenShare() {
 }
 
 /**
- * Stops the screen sharing.
+ * 停止屏幕共享。
  */
 function stopScreenSharing() {
     if (screenRecorder) {
@@ -662,8 +757,49 @@ function stopScreenSharing() {
     screenIcon.textContent = 'screen_share';
     screenButton.classList.remove('active');
     screenContainer.style.display = 'none';
-    logMessage('Screen sharing stopped', 'system');
+    logMessage('屏幕共享已停止', 'system');
+    showNotification('屏幕共享已停止');
 }
 
 screenButton.addEventListener('click', handleScreenShare);
-screenButton.disabled = true;
+screenContainer.querySelector('.close-button').addEventListener('click', stopScreenSharing);
+
+// 添加通知样式
+const notificationStyle = document.createElement('style');
+notificationStyle.textContent = `
+    .notification {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        font-size: 14px;
+        z-index: 2000;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    }
+    .notification.success {
+        background: rgba(52, 168, 83, 0.9);
+    }
+    .notification.error {
+        background: rgba(234, 67, 53, 0.9);
+    }
+`;
+document.head.appendChild(notificationStyle);
+
+// 自动聚焦消息输入框（当启用时）
+function focusInput() {
+    if (!messageInput.disabled) {
+        messageInput.focus();
+    }
+}
+
+// 在页面加载后和连接成功后聚焦输入框
+window.addEventListener('load', () => {
+    // 添加欢迎消息
+    logMessage('欢迎使用 Gemini Playground，请点击右上角的"连接"按钮开始', 'system');
+});

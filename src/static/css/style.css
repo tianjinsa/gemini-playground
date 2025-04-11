@@ -1,598 +1,443 @@
 :root {
     --primary-color: #4285f4;
+    --primary-dark: #3367d6;
     --secondary-color: #34a853;
+    --secondary-dark: #2d8d46;
     --danger-color: #ea4335;
-    --background-color: #f0f0f0;
+    --danger-dark: #d33126;
+    --success-color: #34a853;
+    --warning-color: #fbbc05;
+    --background-color: #f8f9fa;
     --surface-color: #fff;
-    --border-color: #ccc;
-    --text-color: #333;
-    --text-secondary: #666;
+    --surface-alt: #f1f3f4;
+    --border-color: #dadce0;
+    --border-hover: #bdc1c6;
+    --text-color: #202124;
+    --text-secondary: #5f6368;
+    --text-light: #80868b;
     --shadow-color: rgba(0, 0, 0, 0.1);
+    --shadow-hover: rgba(0, 0, 0, 0.18);
     --border-radius: 8px;
+    --border-radius-lg: 12px;
+    --spacing-xs: 4px;
     --spacing-sm: 8px;
     --spacing-md: 16px;
     --spacing-lg: 24px;
+    --spacing-xl: 32px;
     --primary-color-rgb: 66, 133, 244;
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease;
+    --font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
 body {
-    font-family: sans-serif;
-    justify-content: center;
-    align-items: center;
+    font-family: var(--font-family);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    min-height: 100vh;
-    background-color: #f0f0f0;
 }
 
 #app {
-    background-color: #fff;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    width: 80%;
-    max-width: 1000px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    background-color: var(--surface-color);
+    box-shadow: 0 1px 3px var(--shadow-color);
+}
+
+/* ===== Header Styles ===== */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 1px 2px var(--shadow-color);
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.logo-icon {
+    height: 32px;
+    width: 32px;
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.header-controls {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+/* ===== Button Styles ===== */
+button {
+    cursor: pointer;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+    border: none;
+    transition: var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.primary-button {
+    background-color: var(--primary-color);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-weight: 500;
+}
+
+.primary-button:hover {
+    background-color: var(--primary-dark);
+    box-shadow: 0 2px 4px var(--shadow-color);
+    transform: translateY(-1px);
+}
+
+.primary-button:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+.danger-button {
+    background-color: var(--danger-color);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-weight: 500;
+}
+
+.danger-button:hover {
+    background-color: var(--danger-dark);
+    box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+.icon-button {
+    background: transparent;
+    color: var(--primary-color);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+}
+
+.icon-button:hover {
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+}
+
+.icon-button.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.icon-button.danger {
+    color: var(--danger-color);
+}
+
+.icon-button.danger:hover {
+    background-color: rgba(234, 67, 53, 0.1);
+}
+
+/* ===== Main Content Styles ===== */
+.main-content {
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-lg);
+    flex: 1;
+    gap: var(--spacing-md);
+}
+
+@media (min-width: 768px) {
+    .main-content {
+        flex-direction: row;
+    }
+    
+    .chat-container {
+        flex: 3;
+    }
+    
+    .visualizer-panel {
+        flex: 1;
+    }
+}
+
+/* ===== Chat Container Styles ===== */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    flex: 1;
 }
 
 #logs-container {
-    border: 1px solid #ccc;
-    height: 300px;
+    flex: 1;
+    min-height: 400px;
+    max-height: 600px;
     overflow-y: auto;
-    margin-bottom: 10px;
-    padding: 10px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    transition: box-shadow 0.3s ease;
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius);
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 1px 2px var(--shadow-color);
     scroll-behavior: smooth;
-}
-
-#logs-container:hover {
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
 }
 
 .log-entry {
-    font-size: 0.9em;
-    margin-bottom: 5px;
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+    max-width: 90%;
+    line-height: 1.5;
 }
 
 .log-entry.system {
-    color: #080; /* Green for system messages */
+    align-self: center;
+    background-color: var(--surface-alt);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    max-width: 70%;
+    opacity: 0.9;
 }
 
 .log-entry.user {
-    color: #008; /* Blue for user messages */
+    align-self: flex-end;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: var(--border-radius) 0 var(--border-radius) var(--border-radius);
 }
 
 .log-entry.ai {
-    color: #800; /* Red for AI messages */
+    align-self: flex-start;
+    background-color: var(--surface-alt);
+    color: var(--text-color);
+    border-radius: 0 var(--border-radius) var(--border-radius) var (--border-radius);
 }
 
 .log-entry .timestamp {
-    color: #888;
-    margin-right: 5px;
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-right: var(--spacing-sm);
 }
 
 .log-entry .emoji {
-    margin-right: 5px;
+    margin-right: var(--spacing-sm);
+}
+
+/* ===== Input Container Styles ===== */
+.input-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+@media (min-width: 768px) {
+    .input-container {
+        flex-direction: row;
+        align-items: center;
+    }
 }
 
 #message-input {
-    width: calc(100% - 100px);
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    margin-right: 10px;
+    flex: 1;
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-family: var(--font-family);
+    font-size: 0.95rem;
+    transition: var(--transition-fast);
 }
 
-#send-button, #mic-button {
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #4285f4;
-    color: #fff;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+#message-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
 }
 
-#send-button:hover, #mic-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#send-button:active, #mic-button:active {
-    transform: translateY(1px);
-}
-
-#send-button::after, #mic-button::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.3s ease, height 0.3s ease;
-}
-
-#send-button:active::after, #mic-button:active::after {
-    width: 200px;
-    height: 200px;
-}
-
-#audio-visualizer {
-    width: 100%;
-    height: 20px;
-    background-color: #eee;
-    margin-top: 10px;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.audio-bar {
-    height: 100%;
-    background-color: #4285f4;
-    width: 0%;
-}
-
-/* Add a simple animation for the audio bars */
-@keyframes audio-pulse {
-    0% {
-        transform: scaleY(1);
-    }
-    50% {
-        transform: scaleY(1.5);
-    }
-    100% {
-        transform: scaleY(1);
-    }
-}
-
-.audio-bar.active {
-    animation: audio-pulse 0.5s infinite;
-}
-
-#connect-button {
-    padding: 10px 20px;
-    margin-bottom: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #34a853;
-    color: #fff;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-#connect-button.connected {
-    background-color: #ea4335;
-}
-
-#video-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 480px;
-    z-index: 100;
-}
-
-#video-container video {
-    width: 100%;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-}
-
-.video-controls {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 101;
-}
-
-#stop-video {
-    background: #ea4335;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-#stop-video:hover {
-    background: #d33426;
-}
-
-#flip-camera {
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-#camera-button {
-    background: #4285f4;
-    color: white;
-    border: none;
-    padding: 8px;
-    border-radius: 50%;
-    cursor: pointer;
-    margin-left: 8px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-#camera-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#camera-button:active {
-    transform: translateY(1px);
-}
-
-#camera-button::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.3s ease, height 0.3s ease;
-}
-
-#camera-button:active::after {
-    width: 200px;
-    height: 200px;
-}
-
-#camera-button.active {
-    background: #ea4335;
-}
-
-#frame-preview {
-    position: absolute;
-    bottom: 2px;
-    right: 2px;
-    width: 120px;
-    height: 90px;
-    border: 2px solid rgba(66, 133, 244, 0.8);
-    border-radius: 4px;
-    background: #000;
-    z-index: 2;
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-#frame-preview:hover {
-    transform: scale(1.1);
-    border-color: #4285f4;
-}
-
-#frame-preview.enlarged {
-    width: 480px;
-    height: 360px;
-    bottom: 50%;
-    right: 50%;
-    transform: translate(50%, 50%);
-    z-index: 4;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-}
-
-/* Add overlay when preview is enlarged */
-#frame-preview.enlarged::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: -1;
-}
-
-/* Improve video controls visibility */
-.video-controls {
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-#video-container:hover .video-controls {
-    opacity: 1;
-}
-
-#screen-button {
-    background: #4285f4;
-    color: white;
-    border: none;
-    padding: 8px;
-    border-radius: 50%;
-    cursor: pointer;
-    margin-left: 8px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-#screen-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#screen-button:active {
-    transform: translateY(1px);
-}
-
-#screen-button::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.3s ease, height 0.3s ease;
-}
-
-#screen-button:active::after {
-    width: 200px;
-    height: 200px;
-}
-
-#screen-button.active {
-    background: #ea4335;
-}
-
-/* Add styles for screen preview */
-#screen-container {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #000;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    width: 480px;
-    height: 360px;
-    transition: all 0.3s ease;
-    display: none;
-    z-index: 1000;
-}
-
-#screen-preview {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    background: #000;
-    display: block;
-}
-
-/* Add hover effect */
-#screen-container:hover {
-    transform: scale(1.02);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
-}
-
-/* Add a close button */
-#screen-container .close-button {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
+.action-buttons {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    gap: var(--spacing-sm);
 }
 
-#screen-container:hover .close-button {
-    opacity: 1;
+/* ===== Audio Visualizer Styles ===== */
+.visualizer-panel {
+    background: var(--surface-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
 }
 
-#screen-container .close-button:hover {
-    background: rgba(0, 0, 0, 0.8);
+.visualizer-panel h3 {
+    margin-bottom: var(--spacing-md);
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-size: 1rem;
 }
 
 .audio-visualizers {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin: 10px 0;
+    gap: var(--spacing-lg);
 }
 
 .visualizer-container {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--spacing-xs);
 }
 
 .visualizer-container label {
-    font-size: 0.8em;
-    color: #666;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 
 #input-audio-visualizer,
 #audio-visualizer {
-    width: 100%;
-    height: 20px;
-    background-color: #eee;
-    border-radius: 4px;
+    height: 40px;
+    background-color: var(--surface-alt);
+    border-radius: var(--border-radius);
     overflow: hidden;
+    position: relative;
 }
 
 #input-audio-visualizer .audio-bar {
     height: 100%;
-    background-color: #34a853; /* Green for input audio */
+    background-color: var(--secondary-color);
     width: 0%;
+    transition: width 0.1s ease;
 }
 
 #audio-visualizer .audio-bar {
     height: 100%;
-    background-color: #4285f4; /* Blue for output audio */
+    background-color: var(--primary-color);
     width: 0%;
+    transition: width 0.1s ease;
 }
 
-/* Update the animation for both visualizers */
 @keyframes audio-pulse {
-    0% {
-        transform: scaleY(1);
-    }
-    50% {
-        transform: scaleY(1.5);
-    }
-    100% {
-        transform: scaleY(1);
-    }
+    0% { opacity: 0.7; transform: scaleY(0.9); }
+    50% { opacity: 1; transform: scaleY(1.1); }
+    100% { opacity: 0.7; transform: scaleY(0.9); }
 }
 
 .audio-bar.active {
     animation: audio-pulse 0.5s infinite;
 }
 
-.settings {
-    margin-bottom: 10px;
-    display: flex;
-    gap: 10px;
-}
-
-#api-key {
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    width: 300px;
-}
-
-#voice-select  #response-type-select{
-    padding: 4px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
- 
-/* Configuration panel */
+/* ===== Config Container Styles ===== */
 #config-container {
-    background: var(--surface-color);
-    padding: var(--spacing-lg);
-    border-radius: var(--border-radius);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 380px;
+    background-color: var(--surface-color);
+    box-shadow: -2px 0 10px var(--shadow-color);
+    z-index: 1000;
+    transform: translateX(100%);
+    transition: transform var(--transition-normal);
+    overflow-y: auto;
+    padding: 0;
 }
 
 #config-container.active {
-    display: block;
+    transform: translateX(0);
 }
+
+.config-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.config-header h2 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin: 0;
+}
+
+.close-config {
+    background: transparent;
+    color: var(--text-secondary);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+}
+
+.close-config:hover {
+    background-color: var(--surface-alt);
+    color: var(--text-color);
+}
+
 .config-wrapper {
-    display: grid;
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.setting-group {
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-md);
-    max-width: 600px;
-    margin: 0 auto;
-}
-#apply-config {
-    padding: var(--spacing-md);
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    transition: all 0.2s ease;
 }
 
-#apply-config:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+.setting-group h3 {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
 }
 
-#system-instruction {
+.api-key-container {
+    margin-bottom: var(--spacing-md);
+}
+
+.api-key-container label {
+    display: block;
+    margin-bottom: var(--spacing-xs);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+#api-key {
+    width: 100%;
     padding: var(--spacing-md);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    font-size: 14px;
+    font-family: var(--font-family);
+    transition: var(--transition-fast);
 }
 
-/* Responsive styles */
-@media (max-width: 768px) {
-    #app {
-        padding: var(--spacing-sm);
-        width: 96%;
-    }
-
-    .hidden-mobile {
-        display: none;
-    }
-
-    #config-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 1000;
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
-        overflow-y: auto;
-        display: block;
-        background: var(--surface-color);
-        padding: var(--spacing-lg);
-    }
-
-    #config-container.active {
-        transform: translateX(0);
-    }
-
-    .logs-wrapper {
-        max-height: 30vh;
-    }
-
-    #logs-container {
-        max-height: calc(30vh - 50px);
-    }
-
-    .input-controls {
-        position: sticky;
-        bottom: 0;
-        background: var(--surface-color);
-        padding: var(--spacing-md);
-        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-        z-index: 100;
-    }
-
-    .action-buttons {
-        flex-wrap: wrap;
-        justify-content: center;
-    }
-
-    #video-container {
-        width: 60%;
-        max-height: 40vh;
-        bottom: 0;
-        right: 0;
-    }
-
-    #screen-container {
-        width: 100%;
-        height: 50vh;
-        bottom: 0;
-        left: 0;
-        right: auto;
-    }
+#api-key:focus {
+    outline: none;
+    border-color: var(--primary-color);
 }
 
 .setting-container {
@@ -601,13 +446,214 @@ body {
     gap: var(--spacing-md);
 }
 
-.setting-label {
-    font-size: 12px;
-    font-weight: bold;
+.setting-container label {
+    font-size: 0.9rem;
+    color: var(--text-color);
+    min-width: 100px;
 }
 
+#voice-select,
+#response-type-select {
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--surface-color);
+    flex: 1;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+}
+
+#fps-input {
+    width: 70px;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    text-align: center;
+    font-family: var(--font-family);
+}
 
 .fps-help {
-    color: #666;
-    font-size: 12px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+#system-instruction {
+    width: 100%;
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-family: var(--font-family);
+    resize: vertical;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+#system-instruction:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* ===== Video Container Styles ===== */
+#video-container {
+    position: fixed;
+    bottom: var(--spacing-lg);
+    right: var(--spacing-lg);
+    width: 320px;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: 0 4px 20px var(--shadow-color);
+    z-index: 100;
+    transition: var(--transition-normal);
+}
+
+#video-container:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 30px var(--shadow-hover);
+}
+
+#video-container video {
+    width: 100%;
+    display: block;
+    background-color: #000;
+}
+
+.video-controls {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    display: flex;
+    gap: var(--spacing-sm);
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+#video-container:hover .video-controls {
+    opacity: 1;
+}
+
+/* ===== Screen Container Styles ===== */
+#screen-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80vw;
+    max-width: 1000px;
+    height: auto;
+    max-height: 80vh;
+    background-color: #000;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: 0 10px 40px var(--shadow-hover);
+    z-index: 200;
+}
+
+#screen-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+#screen-container .close-button {
+    position: absolute;
+    top: var(--spacing-md);
+    right: var(--spacing-md);
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    opacity: 0.7;
+    transition: var(--transition-normal);
+}
+
+#screen-container .close-button:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+/* ===== Footer Styles ===== */
+.app-footer {
+    padding: var(--spacing-md);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+}
+
+/* ===== Connect Button Styles ===== */
+#connect-button {
+    background-color: var(--secondary-color);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    transition: var(--transition-fast);
+}
+
+#connect-button:hover {
+    background-color: var(--secondary-dark);
+    box-shadow: 0 2px 4px var(--shadow-color);
+    transform: translateY(-1px);
+}
+
+#connect-button:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+#connect-button.connected {
+    background-color: var(--danger-color);
+}
+
+#connect-button.connected:hover {
+    background-color: var(--danger-dark);
+}
+
+/* ===== Animation Styles ===== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease forwards;
+}
+
+/* ===== Responsive Styles ===== */
+@media (max-width: 768px) {
+    .main-content {
+        padding: var(--spacing-sm);
+    }
+    
+    #logs-container {
+        min-height: 300px;
+    }
+    
+    #config-container {
+        width: 100%;
+    }
+    
+    .app-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    .logo h1 {
+        font-size: 1.2rem;
+    }
+    
+    #video-container {
+        width: 240px;
+        bottom: var(--spacing-md);
+        right: var(--spacing-md);
+    }
+    
+    #screen-container {
+        width: 95vw;
+    }
+    
+    .action-buttons {
+        justify-content: center;
+    }
 }
