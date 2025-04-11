@@ -88,4 +88,149 @@ export class ApplicationError extends Error {
             stack: this.stack
         };
     }
-} 
+}
+
+/**
+ * @fileoverview 全局错误处理工具类，用于捕获和处理未捕获的异常
+ */
+
+/**
+ * 错误边界类，提供全局错误捕获和处理能力
+ */
+export class ErrorBoundary {
+    /**
+     * 初始化错误边界
+     * @param {Object} options - 配置选项
+     * @param {Function} options.onError - 错误处理回调
+     * @param {boolean} options.silent - 是否静默处理错误（不显示给用户）
+     */
+    constructor(options = {}) {
+        this.options = {
+            onError: (error) => console.error('Uncaught error:', error),
+            silent: false,
+            ...options
+        };
+        
+        this.setupGlobalHandlers();
+    }
+    
+    /**
+     * 设置全局错误处理器
+     * @private
+     */
+    setupGlobalHandlers() {
+        // 处理未捕获的 Promise 异常
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled Promise rejection:', event.reason);
+            this.handleError(event.reason);
+            event.preventDefault();
+        });
+        
+        // 处理未捕获的 JS 异常
+        window.addEventListener('error', (event) => {
+            console.error('Uncaught error:', event.error);
+            this.handleError(event.error || new Error(event.message));
+            event.preventDefault();
+        });
+    }
+    
+    /**
+     * 处理错误
+     * @param {Error} error - 捕获的错误对象
+     * @private
+     */
+    handleError(error) {
+        this.options.onError(error);
+        
+        if (!this.options.silent) {
+            this.showErrorToUser(error);
+        }
+    }
+    
+    /**
+     * 向用户显示错误信息
+     * @param {Error} error - 捕获的错误对象
+     * @private
+     */
+    showErrorToUser(error) {
+        // 创建错误提示元素
+        const errorContainer = document.createElement('div');
+        errorContainer.className = 'error-notification';
+        errorContainer.innerHTML = `
+            <div class="error-notification-content">
+                <div class="error-notification-header">
+                    <span class="error-title">出错了</span>
+                    <button class="error-close">&times;</button>
+                </div>
+                <div class="error-notification-body">
+                    <p>${error.message || '发生了未知错误'}</p>
+                </div>
+            </div>
+        `;
+        
+        // 添加样式
+        errorContainer.style.position = 'fixed';
+        errorContainer.style.bottom = '20px';
+        errorContainer.style.right = '20px';
+        errorContainer.style.backgroundColor = '#f44336';
+        errorContainer.style.color = 'white';
+        errorContainer.style.padding = '15px';
+        errorContainer.style.borderRadius = '4px';
+        errorContainer.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        errorContainer.style.zIndex = '9999';
+        errorContainer.style.maxWidth = '300px';
+        
+        // 添加关闭按钮事件
+        const closeButton = errorContainer.querySelector('.error-close');
+        closeButton.style.cursor = 'pointer';
+        closeButton.style.float = 'right';
+        closeButton.style.fontSize = '20px';
+        closeButton.style.fontWeight = 'bold';
+        closeButton.style.marginLeft = '10px';
+        
+        closeButton.addEventListener('click', () => {
+            document.body.removeChild(errorContainer);
+        });
+        
+        // 添加到页面
+        document.body.appendChild(errorContainer);
+        
+        // 5秒后自动消失
+        setTimeout(() => {
+            if (document.body.contains(errorContainer)) {
+                document.body.removeChild(errorContainer);
+            }
+        }, 5000);
+    }
+    
+    /**
+     * 包装函数，为其添加错误处理
+     * @param {Function} fn - 要包装的函数
+     * @returns {Function} 包装后的函数
+     */
+    wrapFunction(fn) {
+        return (...args) => {
+            try {
+                const result = fn(...args);
+                
+                // 处理返回的 Promise
+                if (result instanceof Promise) {
+                    return result.catch(error => {
+                        this.handleError(error);
+                        throw error;
+                    });
+                }
+                
+                return result;
+            } catch (error) {
+                this.handleError(error);
+                throw error;
+            }
+        };
+    }
+}
+
+// 创建默认的错误边界实例
+const defaultErrorBoundary = new ErrorBoundary();
+
+export default defaultErrorBoundary;

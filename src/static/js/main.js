@@ -1,3 +1,115 @@
+// 在文件顶部添加性能监测和资源延迟加载
+/**
+ * Performance monitoring utility
+ */
+const PerformanceMonitor = {
+    marks: {},
+    
+    /**
+     * Start timing for a specific action
+     * @param {string} name - The name of the action
+     */
+    start(name) {
+        this.marks[name] = performance.now();
+    },
+    
+    /**
+     * End timing for a specific action and log the duration
+     * @param {string} name - The name of the action
+     * @returns {number} - The duration in milliseconds
+     */
+    end(name) {
+        if (!this.marks[name]) {
+            console.warn(`No start mark found for ${name}`);
+            return 0;
+        }
+        
+        const duration = performance.now() - this.marks[name];
+        console.info(`Performance: ${name} took ${duration.toFixed(2)}ms`);
+        delete this.marks[name];
+        return duration;
+    }
+};
+
+/**
+ * Resource loader for lazy loading
+ */
+const ResourceLoader = {
+    loaded: {},
+    
+    /**
+     * Lazy load a JavaScript module
+     * @param {string} path - The path to the JavaScript module
+     * @returns {Promise<any>} - The imported module
+     */
+    async loadModule(path) {
+        if (this.loaded[path]) {
+            return this.loaded[path];
+        }
+        
+        PerformanceMonitor.start(`load-module-${path}`);
+        try {
+            const module = await import(path);
+            this.loaded[path] = module;
+            PerformanceMonitor.end(`load-module-${path}`);
+            return module;
+        } catch (err) {
+            console.error(`Failed to load module ${path}:`, err);
+            throw err;
+        }
+    },
+    
+    /**
+     * Preload modules that might be needed soon
+     * @param {string[]} paths - Paths to the modules to preload
+     */
+    preloadModules(paths) {
+        // Use requestIdleCallback for non-critical resources
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(() => {
+                paths.forEach(path => {
+                    this.loadModule(path).catch(err => {
+                        console.warn(`Preload failed for ${path}:`, err);
+                    });
+                });
+            });
+        } else {
+            // Fallback for browsers not supporting requestIdleCallback
+            setTimeout(() => {
+                paths.forEach(path => {
+                    this.loadModule(path).catch(err => {
+                        console.warn(`Preload failed for ${path}:`, err);
+                    });
+                });
+            }, 1000);
+        }
+    }
+};
+
+// 应用防抖动于某些频繁触发的事件处理函数
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), wait);
+    };
+}
+
+// 初始记录页面加载性能
+PerformanceMonitor.start('page-load');
+window.addEventListener('load', () => {
+    PerformanceMonitor.end('page-load');
+    
+    // 预加载可能会用到的模块
+    ResourceLoader.preloadModules([
+        './audio/audio-streamer.js',
+        './audio/audio-recorder.js',
+        './video/video-manager.js',
+        './video/screen-recorder.js'
+    ]);
+});
+
 import { MultimodalLiveClient } from './core/websocket-client.js';
 import { AudioStreamer } from './audio/audio-streamer.js';
 import { AudioRecorder } from './audio/audio-recorder.js';
@@ -555,4 +667,3 @@ function stopScreenSharing() {
 
 screenButton.addEventListener('click', handleScreenShare);
 screenButton.disabled = true;
-  

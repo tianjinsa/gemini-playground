@@ -4,37 +4,180 @@
 
 import { Buffer } from "node:buffer";
 
+// 简单的内存缓存实现
+class MemoryCache {
+  constructor(ttl = 300000) { // 默认5分钟过期
+    this.cache = new Map();
+    this.ttl = ttl;
+  }
+
+  get(key) {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() > item.expiry) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return item.value;
+  }
+
+  set(key, value, customTtl) {
+    const expiry = Date.now() + (customTtl || this.ttl);
+    this.cache.set(key, { value, expiry });
+  }
+
+  delete(key) {
+    this.cache.delete(key);
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// 请求限流机制
+class RateLimiter {
+  constructor(maxRequests = 60, timeWindow = 60000) { // 默认每分钟60个请求
+    this.maxRequests = maxRequests;
+    this.timeWindow = timeWindow;
+    this.requests = new Map(); // key: IP, value: array of timestamps
+  }
+
+  // 检查IP是否超过限制
+  isRateLimited(ip) {
+    const now = Date.now();
+    const timestamps = this.requests.get(ip) || [];
+    
+    // 清理过期的请求记录
+    const validTimestamps = timestamps.filter(time => now - time < this.timeWindow);
+    
+    // 更新请求记录
+    this.requests.set(ip, [...validTimestamps, now]);
+    
+    return validTimestamps.length >= this.maxRequests;
+  }
+  
+  // 获取剩余可用请求数量
+  getRemainingRequests(ip) {
+    const now = Date.now();
+    const timestamps = this.requests.get(ip) || [];
+    const validTimestamps = timestamps.filter(time => now - time < this.timeWindow);
+    return Math.max(0, this.maxRequests - validTimestamps.length);
+  }
+}
+
+// 初始化缓存实例
+const modelsCache = new MemoryCache(1800000); // 模型列表缓存30分钟
+const embeddingsCache = new MemoryCache(300000); // 嵌入缓存5分钟
+
+// 创建限流器实例
+const chatCompletionLimiter = new RateLimiter(60, 60000); // 聊天补全每分钟60个请求
+const embeddingsLimiter = new RateLimiter(100, 60000); // 嵌入每分钟100个请求
+
+// 添加 API 配置和常量
+const CONFIG = {
+  BASE_URL: "https://generativelanguage.googleapis.com",
+  API_VERSION: "v1beta",
+  DEFAULT_MODEL: "gemini-1.5-pro-latest",
+  DEFAULT_EMBEDDINGS_MODEL: "text-embedding-004",
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000, // 毫秒
+};
+
 export default {
   async fetch (request) {
     if (request.method === "OPTIONS") {
       return handleOPTIONS();
     }
+    
+    // 改进的错误处理
     const errHandler = (err) => {
-      console.error(err);
-      return new Response(err.message, fixCors({ status: err.status ?? 500 }));
+      console.error(`Error: ${err.message || 'Unknown error'}`, err.stack || '');
+      const status = err.status || 500;
+      const body = JSON.stringify({
+        error: {
+          message: err.message || 'Internal Server Error',
+          type: err.name || 'Error',
+          status
+        }
+      }, null, 2);
+      
+      return new Response(body, fixCors({ 
+        status, 
+        headers: { 'Content-Type': 'application/json' }
+      }));
     };
+    
     try {
       const auth = request.headers.get("Authorization");
       const apiKey = auth?.split(" ")[1];
-      const assert = (success) => {
+      
+      // 验证 API Key
+      if (!apiKey) {
+        throw new HttpError("API key is required", 401);
+      }
+      
+      // 获取客户端 IP (假设通过 CF-Connecting-IP 或 X-Forwarded-For 头部)
+      const clientIP = request.headers.get("CF-Connecting-IP") || 
+                       request.headers.get("X-Forwarded-For")?.split(",")[0] || 
+                       "unknown";
+      
+      const { pathname } = new URL(request.url);
+      
+      // 请求限流检查
+      switch (true) {
+        case pathname.endsWith("/chat/completions"):
+          if (chatCompletionLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for chat completions", 429);
+          }
+          break;
+        case pathname.endsWith("/embeddings"):
+          if (embeddingsLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for embeddings", 429);
+          }
+          break;
+      }
+      
+      const assert = (success, message = "Method not allowed", status = 405) => {
         if (!success) {
-          throw new HttpError("The specified HTTP method is not allowed for the requested resource", 400);
+          throw new HttpError(message, status);
         }
       };
-      const { pathname } = new URL(request.url);
+      
       switch (true) {
         case pathname.endsWith("/chat/completions"):
           assert(request.method === "POST");
-          return handleCompletions(await request.json(), apiKey)
+          const chatCompletionBody = await request.json();
+          
+          // 内容安全检查
+          validateContentSafety(chatCompletionBody);
+          
+          return await withRetry(() => handleCompletions(chatCompletionBody, apiKey))
             .catch(errHandler);
+            
         case pathname.endsWith("/embeddings"):
           assert(request.method === "POST");
-          return handleEmbeddings(await request.json(), apiKey)
+          const embeddingsBody = await request.json();
+          
+          // 验证输入长度，防止过大请求
+          if (Array.isArray(embeddingsBody.input)) {
+            assert(
+              embeddingsBody.input.length <= 100, 
+              "Too many input items. Maximum allowed: 100", 
+              400
+            );
+          }
+          
+          return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
             .catch(errHandler);
+            
         case pathname.endsWith("/models"):
           assert(request.method === "GET");
-          return handleModels(apiKey)
+          return await withRetry(() => handleModels(apiKey))
             .catch(errHandler);
+            
         default:
           throw new HttpError("404 Not Found", 404);
       }
@@ -52,9 +195,37 @@ class HttpError extends Error {
   }
 }
 
+// 添加重试逻辑
+async function withRetry(fn, attempts = CONFIG.RETRY_ATTEMPTS) {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      console.warn(`Request failed (attempt ${i + 1}/${attempts}): ${error.message}`);
+      lastError = error;
+      
+      // 只重试可恢复的错误（网络错误或5xx错误）
+      if (error.status && (error.status < 500 || error.status === 429)) {
+        throw error; // 不重试客户端错误或请求过多
+      }
+      
+      if (i < attempts - 1) {
+        // 指数退避
+        const delay = CONFIG.RETRY_DELAY * Math.pow(2, i);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 const fixCors = ({ headers, status, statusText }) => {
   headers = new Headers(headers);
   headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Max-Age", "86400"); // 24小时
   return { headers, status, statusText };
 };
 
@@ -62,14 +233,16 @@ const handleOPTIONS = async () => {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "*",
-    }
+      "Access-Control-Max-Age": "86400",
+    },
+    status: 204 // 使用正确的 No Content 状态码
   });
 };
 
-const BASE_URL = "https://generativelanguage.googleapis.com";
-const API_VERSION = "v1beta";
+const BASE_URL = CONFIG.BASE_URL;
+const API_VERSION = CONFIG.API_VERSION;
 
 // https://github.com/google-gemini/generative-ai-js/blob/cf223ff4a1ee5a2d944c53cddb8976136382bee6/src/requests/request.ts#L71
 const API_CLIENT = "genai-js/0.21.0"; // npm view @google/generative-ai version
@@ -79,28 +252,69 @@ const makeHeaders = (apiKey, more) => ({
   ...more
 });
 
+// 添加性能监控
+const measurePerformance = async (name, fn) => {
+  const startTime = performance.now();
+  try {
+    return await fn();
+  } finally {
+    const duration = performance.now() - startTime;
+    console.info(`Performance: ${name} took ${duration.toFixed(2)}ms`);
+  }
+};
+
 async function handleModels (apiKey) {
-  const response = await fetch(`${BASE_URL}/${API_VERSION}/models`, {
-    headers: makeHeaders(apiKey),
-  });
-  let { body } = response;
-  if (response.ok) {
+  return await measurePerformance('handleModels', async () => {
+    const cacheKey = 'models';
+    const cachedResponse = modelsCache.get(cacheKey);
+    if (cachedResponse) {
+      return new Response(cachedResponse, fixCors({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    }
+
+    const response = await fetch(`${BASE_URL}/${API_VERSION}/models`, {
+      headers: makeHeaders(apiKey),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new HttpError(`Models API error: ${response.status} ${errorText}`, response.status);
+    }
+    
+    let { body } = response;
     const { models } = JSON.parse(await response.text());
     body = JSON.stringify({
       object: "list",
       data: models.map(({ name }) => ({
         id: name.replace("models/", ""),
         object: "model",
-        created: 0,
-        owned_by: "",
+        created: Date.now(),
+        owned_by: "google",
       })),
     }, null, "  ");
-  }
-  return new Response(body, fixCors(response));
+    
+    modelsCache.set(cacheKey, body);
+    
+    return new Response(body, fixCors({
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  });
 }
 
 const DEFAULT_EMBEDDINGS_MODEL = "text-embedding-004";
 async function handleEmbeddings (req, apiKey) {
+  const cacheKey = JSON.stringify(req);
+  const cachedResponse = embeddingsCache.get(cacheKey);
+  if (cachedResponse) {
+    return new Response(cachedResponse, fixCors({
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  }
+
   if (typeof req.model !== "string") {
     throw new HttpError("model is not specified", 400);
   }
@@ -137,6 +351,7 @@ async function handleEmbeddings (req, apiKey) {
       })),
       model: req.model,
     }, null, "  ");
+    embeddingsCache.set(cacheKey, body);
   }
   return new Response(body, fixCors(response));
 }
@@ -452,5 +667,42 @@ async function toOpenAiStreamFlush (controller) {
       controller.enqueue(transform(data, "stop"));
     }
     controller.enqueue("data: [DONE]" + delimiter);
+  }
+}
+
+// 添加内容安全验证函数
+function validateContentSafety(body) {
+  // 检查消息内容
+  if (body.messages && Array.isArray(body.messages)) {
+    // 检查消息总数
+    if (body.messages.length > 100) {
+      throw new HttpError("Too many messages. Maximum allowed: 100", 400);
+    }
+    
+    // 检查每条消息内容大小
+    for (const message of body.messages) {
+      if (typeof message.content === 'string') {
+        if (message.content.length > 100000) {  // 限制10万字符
+          throw new HttpError("Message content too large. Maximum allowed: 100000 characters", 400);
+        }
+      } else if (Array.isArray(message.content)) {
+        // 检查多模态内容
+        for (const part of message.content) {
+          if (part.type === 'text' && part.text.length > 100000) {
+            throw new HttpError("Text content too large. Maximum allowed: 100000 characters", 400);
+          }
+          
+          // 检查图像URL
+          if (part.type === 'image_url') {
+            // 简单的URL格式检查
+            const url = part.image_url.url;
+            if (typeof url !== 'string' || (!url.startsWith('http://') && 
+                !url.startsWith('https://') && !url.startsWith('data:'))) {
+              throw new HttpError("Invalid image URL format", 400);
+            }
+          }
+        }
+      }
+    }
   }
 }
