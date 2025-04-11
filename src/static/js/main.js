@@ -150,134 +150,12 @@ systemInstructionInput.value = CONFIG.SYSTEM_INSTRUCTION.TEXT;
 const applyConfigButton = document.getElementById('apply-config');
 const responseTypeSelect = document.getElementById('response-type-select');
 
-// 历史记录管理
-const HistoryManager = {
-    STORAGE_KEY: 'chat_history',
-    MAX_HISTORY: 20,
-    
-    getHistory() {
-        const history = localStorage.getItem(this.STORAGE_KEY);
-        return history ? JSON.parse(history) : [];
-    },
-    
-    saveHistory(history) {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(history));
-    },
-    
-    addConversation(title, messages) {
-        const history = this.getHistory();
-        history.unshift({
-            id: Date.now(),
-            title,
-            timestamp: new Date().toLocaleString(),
-            messages
-        });
-        
-        // 限制历史记录数量
-        if (history.length > this.MAX_HISTORY) {
-            history.pop();
-        }
-        
-        this.saveHistory(history);
-        return history;
-    },
-    
-    deleteConversation(id) {
-        const history = this.getHistory().filter(item => item.id !== id);
-        this.saveHistory(history);
-        return history;
-    }
-};
-
-// 历史记录UI交互
-const historyContainer = document.getElementById('history-container');
-const historyToggle = document.getElementById('history-toggle');
-const closeHistoryBtn = document.querySelector('.close-history');
-const historyList = document.querySelector('.history-list');
-
-// 渲染历史记录列表
-function renderHistoryList() {
-    const history = HistoryManager.getHistory();
-    historyList.innerHTML = '';
-    
-    history.forEach(item => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'history-item';
-        historyItem.innerHTML = `
-            <div class="history-item-title">${item.title}</div>
-            <div class="history-item-time">${item.timestamp}</div>
-        `;
-        
-        historyItem.addEventListener('click', () => {
-            loadConversation(item);
-            historyContainer.classList.remove('active');
-        });
-        
-        historyList.appendChild(historyItem);
-    });
-}
-
-// 加载历史对话
-function loadConversation(conversation) {
-    logsContainer.innerHTML = '';
-    conversation.messages.forEach(msg => {
-        logMessage(msg.content, msg.type);
-    });
-}
-
-// 保存当前对话
-function saveCurrentConversation() {
-    const messages = Array.from(logsContainer.querySelectorAll('.log-entry')).map(el => ({
-        type: el.classList.contains('log-entry system') ? 'system' :
-              el.classList.contains('log-entry user') ? 'user' : 'ai',
-        content: el.querySelector('span:last-child').textContent
-    }));
-    
-    if (messages.length > 0) {
-        const firstUserMessage = messages.find(msg => msg.type === 'user');
-        const title = firstUserMessage ? firstUserMessage.content.substring(0, 30) : '新对话';
-        HistoryManager.addConversation(title, messages);
-        renderHistoryList();
-    }
-}
-
-// 历史记录面板切换
-historyToggle.addEventListener('click', () => {
-    renderHistoryList();
-    historyContainer.classList.add('active');
-});
-
-closeHistoryBtn.addEventListener('click', () => {
-    historyContainer.classList.remove('active');
-});
-
 // 从localStorage加载保存的值
 const savedApiKey = localStorage.getItem('gemini_api_key');
 const savedVoice = localStorage.getItem('gemini_voice');
 const savedFPS = localStorage.getItem('video_fps');
 const savedSystemInstruction = localStorage.getItem('system_instruction');
 const savedTheme = localStorage.getItem('ui_theme') || 'light';
-
-// 主题切换功能
-const themeToggle = document.getElementById('theme-toggle');
-const updateThemeIcon = () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    themeToggle.textContent = isDark ? 'light_mode' : 'dark_mode';
-    themeToggle.title = isDark ? '切换到浅色模式' : '切换到深色模式';
-};
-
-const toggleTheme = () => {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('ui_theme', newTheme);
-    updateThemeIcon();
-};
-
-// 初始化主题
-document.documentElement.setAttribute('data-theme', savedTheme);
-updateThemeIcon();
-themeToggle.addEventListener('click', toggleTheme);
 
 if (savedApiKey) {
     apiKeyInput.value = savedApiKey;
@@ -688,58 +566,21 @@ client.on('audio', async (data) => {
     }
 });
 
-let typingIndicator = null;
-
-function showTypingIndicator() {
-    if (!typingIndicator) {
-        typingIndicator = document.createElement('div');
-        typingIndicator.className = 'log-entry ai typing-indicator';
-        typingIndicator.innerHTML = `
-            <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-            <span class="emoji">🤖</span>
-            <div class="typing-dots">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-            </div>
-        `;
-        logsContainer.appendChild(typingIndicator);
-        logsContainer.scrollTo({
-            top: logsContainer.scrollHeight,
-            behavior: 'smooth'
-        });
-    }
-}
-
-function hideTypingIndicator() {
-    if (typingIndicator) {
-        typingIndicator.remove();
-        typingIndicator = null;
-    }
-}
-
 client.on('content', (data) => {
     if (data.modelTurn) {
         if (data.modelTurn.parts.some(part => part.functionCall)) {
             isUsingTool = true;
             Logger.info('模型正在使用工具');
-            showTypingIndicator();
         } else if (data.modelTurn.parts.some(part => part.functionResponse)) {
             isUsingTool = false;
             Logger.info('工具使用完成');
-            hideTypingIndicator();
         }
 
         const text = data.modelTurn.parts.map(part => part.text).join('');
         if (text) {
-            hideTypingIndicator();
             logMessage(text, 'ai');
         }
     }
-});
-
-client.on('interrupted', () => {
-    hideTypingIndicator();
 });
 
 client.on('interrupted', () => {
@@ -756,7 +597,6 @@ client.on('setupcomplete', () => {
 client.on('turncomplete', () => {
     isUsingTool = false;
     logMessage('对话回合结束', 'system');
-    saveCurrentConversation();
 });
 
 client.on('error', (error) => {
