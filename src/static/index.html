@@ -23,10 +23,20 @@
             </div>
             <div class="header-controls">
                 <button id="connect-button">Connect</button>
+                <button id="history-toggle" class="material-symbols-outlined" title="聊天历史">history</button>
+                <button id="theme-toggle" class="material-symbols-outlined" title="切换主题">dark_mode</button>
                 <button id="config-toggle" class="material-symbols-outlined" title="设置">settings</button>
             </div>
         </header>
         
+        <div id="history-container" class="hidden-mobile">
+            <div class="history-header">
+                <h2>聊天历史</h2>
+                <button class="close-history material-symbols-outlined">close</button>
+            </div>
+            <div class="history-list"></div>
+        </div>
+
         <div id="config-container" class="hidden-mobile">
             <div class="config-header">
                 <h2>设置</h2>
