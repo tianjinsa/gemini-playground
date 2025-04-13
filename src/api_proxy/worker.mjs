@@ -73,8 +73,8 @@ const modelsCache = new MemoryCache(1800000); // 模型列表缓存30分钟
 const embeddingsCache = new MemoryCache(300000); // 嵌入缓存5分钟
 
 // 创建限流器实例
-const chatCompletionLimiter = new RateLimiter(60, 60000); // 聊天补全每分钟60个请求
-const embeddingsLimiter = new RateLimiter(100, 60000); // 嵌入每分钟100个请求
+const chatCompletionLimiter = new RateLimiter(200, 60000); // 聊天补全每分钟200个请求
+const embeddingsLimiter = new RateLimiter(1000, 60000); // 嵌入每分钟1000个请求
 
 // 添加 API 配置和常量
 const CONFIG = {
