@@ -1,47 +1,10 @@
 import { Logger } from '../utils/logger.js';
 
 /**
- * 天气查询工具
- * 这是一个简单的示例工具，用于演示如何实现工具功能
+ * Represents a tool for retrieving weather forecasts.
+ * This tool provides a mock implementation for demonstration purposes.
  */
 export class WeatherTool {
-    /**
-     * 构造函数
-     */
-    constructor() {
-        this.apiKey = '示例API密钥'; // 实际使用时请替换为有效的API密钥
-    }
-
-    /**
-     * 获取指定城市的天气
-     * @param {string} city - 城市名称
-     * @returns {Promise<Object>} - 天气数据对象
-     */
-    async getWeather(city) {
-        // 注意：这是一个模拟函数，实际使用应当替换为真实API调用
-        // 例如: return fetch(`https://api.weatherapi.com/v1/current.json?key=${this.apiKey}&q=${city}`)
-        //       .then(response => response.json());
-        
-        console.log(`获取 ${city} 的天气数据`);
-        
-        // 模拟API延迟
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // 模拟随机天气数据
-        const weathers = ['晴朗', '多云', '雨', '阴天', '雪', '雾'];
-        const weather = weathers[Math.floor(Math.random() * weathers.length)];
-        const temperature = Math.floor(Math.random() * 35) - 5; // -5 到 30 度
-        const humidity = Math.floor(Math.random() * 100); // 0% 到 100% 湿度
-        
-        return {
-            city,
-            weather,
-            temperature,
-            humidity,
-            updated: new Date().toISOString()
-        };
-    }
-
     /**
      * Returns the tool declaration for the Gemini API.
      * The declaration defines the function name, description, and parameters.
@@ -145,4 +108,4 @@ export class WeatherTool {
         }
         return Math.abs(hash);
     }
-}
+} 

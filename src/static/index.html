@@ -5,45 +5,25 @@
 -->
 
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini 2.0 Flash 多模态交互平台</title>
+    <title>Gemini 2.0 Flash Multimodal Live API Client</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
-    <!-- 添加代码高亮库 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/styles/github.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/highlight.min.js"></script>
-    <!-- 常用语言包 -->
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/javascript.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/python.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/java.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/typescript.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/bash.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/json.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/css.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/xml.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/languages/markdown.min.js"></script>
-    <script>hljs.configure({languages: []});</script>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
     <div id="app">
         <header class="app-header">
             <div class="logo">
                 <img src="favicon.ico" alt="Logo" class="logo-icon">
-                <h1>Gemini 智能助手</h1>
+                <h1>Gemini Playground</h1>
             </div>
             <div class="header-controls">
-                <button id="connect-button">连接</button>
-                <button id="theme-toggle" class="icon-button" title="切换主题">
-                    <span id="theme-icon" class="material-symbols-outlined">dark_mode</span>
-                </button>
-                <button id="config-toggle" class="icon-button" title="设置">
-                    <span class="material-symbols-outlined">settings</span>
-                </button>
+                <button id="connect-button">Connect</button>
+                <button id="config-toggle" class="material-symbols-outlined" title="设置">settings</button>
             </div>
         </header>
         
@@ -55,26 +35,8 @@
             <div class="config-wrapper">
                 <div class="api-key-container">
                     <label for="api-key">API Key</label>
-                    <div class="api-key-input-wrapper">
-                        <input type="password" id="api-key" placeholder="请输入Gemini API Key" />
-                        <button id="toggle-api-key" class="icon-button">
-                            <span class="material-symbols-outlined">visibility_off</span>
-                        </button>
-                    </div>
+                    <input type="password" id="api-key" placeholder="请输入Gemini API Key" />
                 </div>
-                
-                <div class="setting-group">
-                    <h3>模型设置</h3>
-                    <div class="setting-container">
-                        <label for="model-select">模型: </label>
-                        <select id="model-select">
-                            <option value="gemini-2.0-flash" selected>Gemini 2.0 Flash</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            <option value="gemini-1.0-pro">Gemini 1.0 Pro</option>
-                        </select>
-                    </div>
-                </div>
-                
                 <div class="setting-group">
                     <h3>语音设置</h3>
                     <div class="setting-container">
@@ -110,44 +72,18 @@
                     <textarea id="system-instruction" placeholder="输入自定义系统指令..." rows="6"></textarea>
                 </div>
                 
-                <div class="setting-group">
-                    <h3>聊天历史</h3>
-                    <div class="history-actions">
-                        <button id="export-history" class="secondary-button">
-                            <span class="material-symbols-outlined">download</span>
-                            导出历史
-                        </button>
-                        <button id="clear-history" class="secondary-button danger">
-                            <span class="material-symbols-outlined">delete</span>
-                            清除历史
-                        </button>
-                    </div>
-                </div>
-                
                 <button id="apply-config" class="primary-button">确认</button>
             </div>
         </div>
         
         <div class="main-content">
             <div class="chat-container">
-                <div class="chat-header">
-                    <span class="connection-status offline">
-                        <span class="status-dot"></span>
-                        未连接
-                    </span>
-                    <button id="tools-toggle" class="icon-button" title="打开工具面板">
-                        <span class="material-symbols-outlined">apps</span>
-                    </button>
-                </div>
-                
                 <div id="logs-container"></div>
                 
                 <div class="input-container">
-                    <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
+                    <input type="text" id="message-input" placeholder="输入消息...">
                     <div class="action-buttons">
-                        <button id="send-button" class="primary-button">
-                            <span class="material-symbols-outlined">send</span>
-                        </button>
+                        <button id="send-button" class="primary-button">发送</button>
                         <button id="mic-button" class="icon-button" title="麦克风">
                             <span id="mic-icon" class="material-symbols-outlined">mic</span>
                         </button>
@@ -157,52 +93,20 @@
                         <button id="screen-button" class="icon-button" title="屏幕分享">
                             <span id="screen-icon" class="material-symbols-outlined">screen_share</span>
                         </button>
-                        <button id="attachment-button" class="icon-button" title="上传文件">
-                            <span class="material-symbols-outlined">attach_file</span>
-                            <input type="file" id="file-input" multiple hidden />
-                        </button>
                     </div>
                 </div>
             </div>
             
-            <div id="side-panel">
-                <div class="side-panel-header">
-                    <h3>辅助工具</h3>
-                    <button id="close-tools" class="icon-button">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
-                </div>
-                
-                <div class="tools-container">
-                    <div class="tool-card" data-tool="weather">
-                        <span class="material-symbols-outlined">sunny</span>
-                        <span>天气查询</span>
+            <div class="visualizer-panel">
+                <h3>音频可视化</h3>
+                <div class="audio-visualizers">
+                    <div class="visualizer-container">
+                        <label>输入音频</label>
+                        <div id="input-audio-visualizer"></div>
                     </div>
-                    <div class="tool-card" data-tool="search">
-                        <span class="material-symbols-outlined">search</span>
-                        <span>网络搜索</span>
-                    </div>
-                    <div class="tool-card" data-tool="calculator">
-                        <span class="material-symbols-outlined">calculate</span>
-                        <span>计算器</span>
-                    </div>
-                    <div class="tool-card" data-tool="translator">
-                        <span class="material-symbols-outlined">translate</span>
-                        <span>翻译工具</span>
-                    </div>
-                </div>
-                
-                <div class="visualizer-panel">
-                    <h3>音频可视化</h3>
-                    <div class="audio-visualizers">
-                        <div class="visualizer-container">
-                            <label>输入音频</label>
-                            <div id="input-audio-visualizer"></div>
-                        </div>
-                        <div class="visualizer-container">
-                            <label>输出音频</label>
-                            <div id="audio-visualizer"></div>
-                        </div>
+                    <div class="visualizer-container">
+                        <label>输出音频</label>
+                        <div id="audio-visualizer"></div>
                     </div>
                 </div>
             </div>
@@ -223,19 +127,8 @@
             <button class="close-button material-symbols-outlined">close</button>
         </div>
         
-        <div id="tool-panel" style="display: none;">
-            <div class="tool-header">
-                <h3 id="active-tool-title">工具</h3>
-                <button class="close-tool material-symbols-outlined">close</button>
-            </div>
-            <div id="tool-content"></div>
-            <div class="tool-actions">
-                <button id="submit-tool" class="primary-button">提交</button>
-            </div>
-        </div>
-        
         <footer class="app-footer">
-            <p>Gemini 智能助手 - 一个多模态API交互工具 &copy; 2025</p>
+            <p>Gemini Playground - 一个多模态API交互工具 &copy; 2025</p>
         </footer>
     </div>
     <script src="js/main.js" type="module"></script>
