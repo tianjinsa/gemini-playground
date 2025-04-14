@@ -1,4 +1,5 @@
 :root {
+    /* 浅色主题变量 */
     --primary-color: #4285f4;
     --primary-dark: #3367d6;
     --secondary-color: #34a853;
@@ -17,6 +18,11 @@
     --text-light: #80868b;
     --shadow-color: rgba(0, 0, 0, 0.1);
     --shadow-hover: rgba(0, 0, 0, 0.18);
+    --chat-user-bg: #e8f0fe;
+    --chat-ai-bg: #f8f9fa;
+    --chat-system-bg: rgba(0, 0, 0, 0.05);
+    
+    /* 布局变量 */
     --border-radius: 8px;
     --border-radius-lg: 12px;
     --spacing-xs: 4px;
@@ -28,6 +34,33 @@
     --transition-fast: 0.2s ease;
     --transition-normal: 0.3s ease;
     --font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --header-height: 60px;
+    --footer-height: 40px;
+}
+
+/* 深色主题变量 */
+[data-theme="dark"] {
+    --primary-color: #8ab4f8;
+    --primary-dark: #669df6;
+    --secondary-color: #81c995;
+    --secondary-dark: #5bb974;
+    --danger-color: #f28b82;
+    --danger-dark: #ee675c;
+    --success-color: #81c995;
+    --warning-color: #fdd663;
+    --background-color: #202124;
+    --surface-color: #292a2d;
+    --surface-alt: #3c4043;
+    --border-color: #5f6368;
+    --border-hover: #9aa0a6;
+    --text-color: #e8eaed;
+    --text-secondary: #bdc1c6;
+    --text-light: #9aa0a6;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --shadow-hover: rgba(0, 0, 0, 0.4);
+    --chat-user-bg: #174ea6;
+    --chat-ai-bg: #3c4043;
+    --chat-system-bg: rgba(255, 255, 255, 0.1);
 }
 
 * {
@@ -44,6 +77,7 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 #app {
@@ -55,6 +89,7 @@ body {
     width: 100%;
     background-color: var(--surface-color);
     box-shadow: 0 1px 3px var(--shadow-color);
+    transition: background-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 /* ===== Header Styles ===== */
@@ -62,10 +97,15 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-md) var(--spacing-lg);
+    padding: 0 var(--spacing-lg);
     background-color: var(--surface-color);
     border-bottom: 1px solid var(--border-color);
     box-shadow: 0 1px 2px var(--shadow-color);
+    height: var(--header-height);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
 .logo {
@@ -77,6 +117,11 @@ body {
 .logo-icon {
     height: 32px;
     width: 32px;
+    transition: transform var(--transition-normal);
+}
+
+.logo-icon:hover {
+    transform: rotate(15deg);
 }
 
 .logo h1 {
@@ -84,11 +129,13 @@ body {
     font-weight: 500;
     color: var(--primary-color);
     margin: 0;
+    transition: color var(--transition-normal);
 }
 
 .header-controls {
     display: flex;
     gap: var(--spacing-md);
+    align-items: center;
 }
 
 /* ===== Button Styles ===== */
@@ -109,6 +156,7 @@ button {
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--border-radius);
     font-weight: 500;
+    transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .primary-button:hover {
@@ -128,11 +176,18 @@ button {
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--border-radius);
     font-weight: 500;
+    transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .danger-button:hover {
     background-color: var(--danger-dark);
     box-shadow: 0 2px 4px var(--shadow-color);
+    transform: translateY(-1px);
+}
+
+.danger-button:active {
+    transform: translateY(1px);
+    box-shadow: none;
 }
 
 .icon-button {
@@ -141,6 +196,7 @@ button {
     width: 36px;
     height: 36px;
     border-radius: 50%;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .icon-button:hover {
@@ -160,82 +216,186 @@ button {
     background-color: rgba(234, 67, 53, 0.1);
 }
 
+.text-button {
+    background: transparent;
+    color: var(--text-secondary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.text-button:hover {
+    background-color: var(--surface-alt);
+    color: var(--text-color);
+}
+
+.text-button .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.connect-button {
+    background-color: var(--secondary-color);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    transition: background-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.connect-button:hover {
+    background-color: var(--secondary-dark);
+    box-shadow: 0 2px 4px var(--shadow-color);
+    transform: translateY(-1px);
+}
+
+.connect-button:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+.connect-button.connected {
+    background-color: var(--danger-color);
+}
+
+.connect-button.connected:hover {
+    background-color: var(--danger-dark);
+}
+
+.preset-button {
+    background-color: var (--surface-alt);
+    color: var(--text-color);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.preset-button:hover {
+    background-color: var(--primary-color);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.preset-buttons {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+}
+
 /* ===== Main Content Styles ===== */
 .main-content {
     display: flex;
-    flex-direction: column;
-    padding: var(--spacing-lg);
+    flex-direction: row;
+    padding: var(--spacing-md);
     flex: 1;
     gap: var(--spacing-md);
+    height: calc(100vh - var(--header-height) - var(--footer-height));
+    overflow: hidden;
 }
 
-@media (min-width: 768px) {
-    .main-content {
-        flex-direction: row;
-    }
-    
-    .chat-container {
-        flex: 3;
-    }
-    
-    .visualizer-panel {
-        flex: 1;
-    }
-}
-
-/* ===== Chat Container Styles ===== */
 .chat-container {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
-    flex: 1;
+    flex: 3;
+    max-height: 100%;
 }
 
+.sidebar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 220px;
+    max-width: 300px;
+}
+
+/* ===== Chat Header Styles ===== */
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.status-indicator::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: var(--spacing-xs);
+    background-color: var(--danger-color);
+}
+
+.status-indicator.online::before {
+    background-color: var(--success-color);
+}
+
+.chat-tools {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* ===== Chat Container Styles ===== */
 #logs-container {
     flex: 1;
-    min-height: 400px;
-    max-height: 600px;
     overflow-y: auto;
     padding: var(--spacing-md);
     border-radius: var(--border-radius);
-    background: var(--surface-color);
+    background-color: var(--surface-color);
     border: 1px solid var(--border-color);
     box-shadow: inset 0 1px 2px var(--shadow-color);
     scroll-behavior: smooth;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .log-entry {
-    padding: var(--spacing-sm);
+    padding: var(--spacing-md);
     border-radius: var(--border-radius);
     font-size: 0.95rem;
     max-width: 90%;
     line-height: 1.5;
+    position: relative;
+    animation: fadeIn 0.3s ease;
+    transition: background-color var(--transition-normal), color var(--transition-normal);
+    box-shadow: 0 1px 2px var(--shadow-color);
 }
 
 .log-entry.system {
     align-self: center;
-    background-color: var(--surface-alt);
+    background-color: var(--chat-system-bg);
     color: var(--text-secondary);
     font-size: 0.85rem;
     max-width: 70%;
-    opacity: 0.9;
+    padding: var(--spacing-sm) var(--spacing-md);
 }
 
 .log-entry.user {
     align-self: flex-end;
-    background-color: var(--primary-color);
+    background-color: var(--chat-user-bg);
     color: white;
     border-radius: var(--border-radius) 0 var(--border-radius) var(--border-radius);
 }
 
 .log-entry.ai {
     align-self: flex-start;
-    background-color: var(--surface-alt);
+    background-color: var(--chat-ai-bg);
     color: var(--text-color);
-    border-radius: 0 var(--border-radius) var(--border-radius) var (--border-radius);
+    border-radius: 0 var(--border-radius) var(--border-radius) var(--border-radius);
 }
 
 .log-entry .timestamp {
@@ -253,23 +413,31 @@ button {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    background-color: var(--surface-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
-@media (min-width: 768px) {
-    .input-container {
-        flex-direction: row;
-        align-items: center;
-    }
+.message-input-wrapper {
+    position: relative;
+    width: 100%;
 }
 
 #message-input {
-    flex: 1;
+    width: 100%;
     padding: var(--spacing-md);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     font-family: var(--font-family);
     font-size: 0.95rem;
-    transition: var(--transition-fast);
+    resize: none;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), 
+                background-color var(--transition-normal), color var(--transition-normal);
+    overflow: hidden;
 }
 
 #message-input:focus {
@@ -278,17 +446,39 @@ button {
     box-shadow: 0 0 0 1px var(--primary-color);
 }
 
+.shortcut-hint {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    font-size: 0.7rem;
+    color: var(--text-light);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.message-input-wrapper:focus-within .shortcut-hint {
+    opacity: 0.7;
+}
+
 .action-buttons {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tool-buttons {
     display: flex;
     gap: var(--spacing-sm);
 }
 
 /* ===== Audio Visualizer Styles ===== */
 .visualizer-panel {
-    background: var(--surface-color);
+    background-color: var(--surface-color);
     border-radius: var(--border-radius);
     padding: var(--spacing-md);
     border: 1px solid var(--border-color);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
 .visualizer-panel h3 {
@@ -322,6 +512,7 @@ button {
     border-radius: var(--border-radius);
     overflow: hidden;
     position: relative;
+    transition: background-color var(--transition-normal);
 }
 
 #input-audio-visualizer .audio-bar {
@@ -348,6 +539,71 @@ button {
     animation: audio-pulse 0.5s infinite;
 }
 
+/* ===== History Panel Styles ===== */
+.history-panel {
+    background-color: var(--surface-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
+}
+
+.history-panel h3 {
+    margin-bottom: var(--spacing-md);
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+#history-container {
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.history-item {
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    background-color: var(--surface-alt);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), transform var(--transition-fast);
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.history-item:hover {
+    background-color: var(--primary-color);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.history-item .history-title {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-item .history-time {
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+.empty-history-message {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: var(--spacing-lg);
+}
+
 /* ===== Config Container Styles ===== */
 #config-container {
     position: fixed;
@@ -359,7 +615,7 @@ button {
     box-shadow: -2px 0 10px var(--shadow-color);
     z-index: 1000;
     transform: translateX(100%);
-    transition: transform var(--transition-normal);
+    transition: transform var(--transition-normal), background-color var(--transition-normal);
     overflow-y: auto;
     padding: 0;
 }
@@ -374,20 +630,23 @@ button {
     align-items: center;
     padding: var(--spacing-md) var(--spacing-lg);
     border-bottom: 1px solid var(--border-color);
+    transition: border-color var(--transition-normal);
 }
 
 .config-header h2 {
     font-size: 1.2rem;
     font-weight: 500;
     margin: 0;
+    color: var(--text-color);
 }
 
 .close-config {
-    background: transparent;
+    background-color: transparent;
     color: var(--text-secondary);
     width: 36px;
     height: 36px;
     border-radius: 50%;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .close-config:hover {
@@ -400,6 +659,19 @@ button {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
+}
+
+.config-footer {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+    transition: border-color var(--transition-normal);
+}
+
+.config-footer p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
 }
 
 .setting-group {
@@ -426,18 +698,40 @@ button {
     color: var(--text-secondary);
 }
 
+.api-key-input-wrapper {
+    position: relative;
+    display: flex;
+}
+
 #api-key {
-    width: 100%;
+    flex: 1;
     padding: var(--spacing-md);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     font-family: var(--font-family);
-    transition: var(--transition-fast);
+    transition: border-color var(--transition-fast), background-color var(--transition-normal), color var(--transition-normal);
+    background-color: var(--surface-color);
+    color: var (--text-color);
 }
 
 #api-key:focus {
     outline: none;
     border-color: var(--primary-color);
+}
+
+#toggle-api-visibility {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: transparent;
+    color: var(--text-secondary);
+}
+
+.api-key-help {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-top: var(--spacing-xs);
 }
 
 .setting-container {
@@ -461,6 +755,8 @@ button {
     flex: 1;
     font-family: var(--font-family);
     font-size: 0.9rem;
+    color: var(--text-color);
+    transition: border-color var(--transition-fast), background-color var(--transition-normal), color var(--transition-normal);
 }
 
 #fps-input {
@@ -470,6 +766,9 @@ button {
     border-radius: var(--border-radius);
     text-align: center;
     font-family: var(--font-family);
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    transition: border-color var(--transition-fast), background-color var(--transition-normal), color var(--transition-normal);
 }
 
 .fps-help {
@@ -486,6 +785,9 @@ button {
     resize: vertical;
     font-size: 0.9rem;
     line-height: 1.4;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    transition: border-color var(--transition-fast), background-color var(--transition-normal), color var(--transition-normal);
 }
 
 #system-instruction:focus {
@@ -504,6 +806,7 @@ button {
     box-shadow: 0 4px 20px var(--shadow-color);
     z-index: 100;
     transition: var(--transition-normal);
+    background-color: #000;
 }
 
 #video-container:hover {
@@ -517,18 +820,29 @@ button {
     background-color: #000;
 }
 
-.video-controls {
-    position: absolute;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
+.video-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
     display: flex;
-    gap: var(--spacing-sm);
+    justify-content: space-between;
+    align-items: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 101;
     opacity: 0;
     transition: opacity var(--transition-normal);
 }
 
-#video-container:hover .video-controls {
+#video-container:hover .video-header {
     opacity: 1;
+}
+
+.video-controls {
+    display: flex;
+    gap: var(--spacing-sm);
 }
 
 /* ===== Screen Container Styles ===== */
@@ -554,11 +868,22 @@ button {
     object-fit: contain;
 }
 
-#screen-container .close-button {
+.screen-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     position: absolute;
-    top: var(--spacing-md);
-    right: var(--spacing-md);
-    background: rgba(0, 0, 0, 0.5);
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 201;
+}
+
+#screen-container .close-button {
+    background-color: rgba(0, 0, 0, 0.5);
     color: white;
     width: 36px;
     height: 36px;
@@ -569,74 +894,160 @@ button {
 
 #screen-container .close-button:hover {
     opacity: 1;
-    background: rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.7);
 }
 
 /* ===== Footer Styles ===== */
 .app-footer {
-    padding: var(--spacing-md);
-    text-align: center;
+    padding: var(--spacing-sm) var(--spacing-lg);
     color: var(--text-secondary);
     font-size: 0.8rem;
     border-top: 1px solid var(--border-color);
     background-color: var(--surface-color);
+    height: var(--footer-height);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
-/* ===== Connect Button Styles ===== */
-#connect-button {
-    background-color: var(--secondary-color);
-    color: white;
-    padding: var(--spacing-sm) var(--spacing-md);
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-links {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+.footer-links a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.footer-links a:hover {
+    text-decoration: underline;
+    opacity: 0.9;
+}
+
+.divider {
+    color: var(--text-light);
+}
+
+/* ===== Loading Overlay Styles ===== */
+#loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    display: none;
+}
+
+.loading-content {
+    background-color: var(--surface-color);
+    padding: var(--spacing-lg);
     border-radius: var(--border-radius);
-    font-weight: 500;
-    transition: var(--transition-fast);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    box-shadow: 0 4px 20px var(--shadow-hover);
 }
 
-#connect-button:hover {
-    background-color: var(--secondary-dark);
-    box-shadow: 0 2px 4px var(--shadow-color);
-    transform: translateY(-1px);
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--border-color);
+    border-top: 4px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 
-#connect-button:active {
-    transform: translateY(1px);
-    box-shadow: none;
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-#connect-button.connected {
+/* ===== Notification Styles ===== */
+.notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 24px;
+    border-radius: var(--border-radius);
+    background-color: var(--surface-alt);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    z-index: 2000;
+    opacity: 1;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    box-shadow: 0 3px 10px var(--shadow-hover);
+    max-width: 90%;
+    text-align: center;
+}
+
+.notification.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.notification.error {
     background-color: var(--danger-color);
-}
-
-#connect-button.connected:hover {
-    background-color: var(--danger-dark);
+    color: white;
 }
 
 /* ===== Animation Styles ===== */
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(10px); }
 }
 
 .fade-in {
     animation: fadeIn 0.3s ease forwards;
 }
 
+.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
 /* ===== Responsive Styles ===== */
-@media (max-width: 768px) {
+@media (max-width: 992px) {
     .main-content {
+        flex-direction: column;
         padding: var(--spacing-sm);
+        height: auto;
     }
     
-    #logs-container {
-        min-height: 300px;
+    .sidebar {
+        flex-direction: row;
+        max-width: none;
     }
     
-    #config-container {
-        width: 100%;
+    .visualizer-panel, .history-panel {
+        flex: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        flex-direction: column;
     }
     
     .app-header {
-        padding: var(--spacing-sm) var(--spacing-md);
+        padding: var(--spacing-sm);
     }
     
     .logo h1 {
@@ -653,7 +1064,51 @@ button {
         width: 95vw;
     }
     
+    .input-container {
+        flex-direction: column;
+    }
+    
     .action-buttons {
-        justify-content: center;
+        justify-content: space-between;
+    }
+    
+    .tool-buttons {
+        justify-content: flex-end;
+    }
+    
+    #config-container {
+        width: 100%;
+    }
+    
+    .footer-content {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+}
+
+@media (max-width: 480px) {
+    .app-header {
+        height: auto;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        flex-wrap: wrap;
+    }
+    
+    .header-controls {
+        width: 100%;
+        justify-content: space-between;
+        margin-top: var(--spacing-xs);
+    }
+    
+    .logo h1 {
+        font-size: 1rem;
+    }
+    
+    .logo-icon {
+        height: 24px;
+        width: 24px;
+    }
+    
+    .main-content {
+        padding: var(--spacing-xs);
     }
 }

@@ -108,6 +108,9 @@ window.addEventListener('load', () => {
         './video/video-manager.js',
         './video/screen-recorder.js'
     ]);
+    
+    // 隐藏加载覆盖层
+    hideLoadingOverlay();
 });
 
 import { MultimodalLiveClient } from './core/websocket-client.js';
@@ -130,6 +133,7 @@ const sendButton = document.getElementById('send-button');
 const micButton = document.getElementById('mic-button');
 const micIcon = document.getElementById('mic-icon');
 const audioVisualizer = document.getElementById('audio-visualizer');
+const connectionStatus = document.getElementById('connection-status');
 const connectButton = document.getElementById('connect-button');
 const cameraButton = document.getElementById('camera-button');
 const cameraIcon = document.getElementById('camera-icon');
@@ -149,6 +153,14 @@ const systemInstructionInput = document.getElementById('system-instruction');
 systemInstructionInput.value = CONFIG.SYSTEM_INSTRUCTION.TEXT;
 const applyConfigButton = document.getElementById('apply-config');
 const responseTypeSelect = document.getElementById('response-type-select');
+const clearChatButton = document.getElementById('clear-chat');
+const toggleApiVisibilityButton = document.getElementById('toggle-api-visibility');
+const toggleApiVisibilityIcon = toggleApiVisibilityButton.querySelector('.material-symbols-outlined');
+const themeToggleButton = document.getElementById('theme-toggle');
+const themeIcon = document.getElementById('theme-icon');
+const historyContainer = document.getElementById('history-container');
+const presetButtons = document.querySelectorAll('.preset-button');
+const loadingOverlay = document.getElementById('loading-overlay');
 
 // 从localStorage加载保存的值
 const savedApiKey = localStorage.getItem('gemini_api_key');
@@ -176,6 +188,24 @@ if (savedSystemInstruction) {
 
 // 设置页面主题
 document.documentElement.setAttribute('data-theme', savedTheme);
+updateThemeIcon();
+
+// 预设系统指令模板
+const systemInstructionPresets = {
+    assistant: "你是一个有用的助手，可以回答用户提出的各种问题，提供准确和有用的信息。你的回答应该简明扼要，但要全面。如果你不确定某个问题的答案，请坦诚地说出来。",
+    coder: "你是一个专业的编程助手，擅长解决编程问题和代码相关的挑战。你可以提供代码示例、调试帮助和最佳实践建议。请确保你的代码是高效、可读和易于维护的。",
+    creative: "你是一个创意合作伙伴，能够帮助用户进行创意思考、头脑风暴和内容创作。你的回答应该有创意、有灵感且能引起用户的思考。你可以提出新颖的观点和替代方案。"
+};
+
+// 处理预设按钮点击
+presetButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const presetType = button.dataset.preset;
+        if (systemInstructionPresets[presetType]) {
+            systemInstructionInput.value = systemInstructionPresets[presetType];
+        }
+    });
+});
 
 // 处理设置面板切换
 configToggle.addEventListener('click', () => {
@@ -185,6 +215,30 @@ configToggle.addEventListener('click', () => {
 closeConfigBtn.addEventListener('click', () => {
     configContainer.classList.remove('active');
 });
+
+// API密钥可见性切换
+toggleApiVisibilityButton.addEventListener('click', () => {
+    const isPassword = apiKeyInput.type === 'password';
+    apiKeyInput.type = isPassword ? 'text' : 'password';
+    toggleApiVisibilityIcon.textContent = isPassword ? 'visibility' : 'visibility_off';
+});
+
+// 主题切换
+themeToggleButton.addEventListener('click', toggleTheme);
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('ui_theme', newTheme);
+    updateThemeIcon();
+    showNotification(`已切换到${newTheme === 'light' ? '浅色' : '深色'}主题`);
+}
+
+function updateThemeIcon() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    themeIcon.textContent = currentTheme === 'light' ? 'dark_mode' : 'light_mode';
+}
 
 applyConfigButton.addEventListener('click', () => {
     configContainer.classList.remove('active');
@@ -199,7 +253,22 @@ applyConfigButton.addEventListener('click', () => {
     CONFIG.SYSTEM_INSTRUCTION.TEXT = systemInstructionInput.value;
     
     // 显示通知
-    showNotification('设置已保存');
+    showNotification('设置已保存', 'success');
+});
+
+// 自动调整文本区域的高度
+messageInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    const maxHeight = 150; // 最大高度限制
+    const newHeight = Math.min(this.scrollHeight, maxHeight);
+    this.style.height = newHeight + 'px';
+    
+    // 如果达到最大高度，启用滚动
+    if (this.scrollHeight > maxHeight) {
+        this.style.overflowY = 'auto';
+    } else {
+        this.style.overflowY = 'hidden';
+    }
 });
 
 // 状态变量
@@ -213,9 +282,25 @@ let videoManager = null;
 let isScreenSharing = false;
 let screenRecorder = null;
 let isUsingTool = false;
+let chatHistory = [];
+let currentChatId = null;
 
 // 多模态客户端
 const client = new MultimodalLiveClient();
+
+/**
+ * 显示加载覆盖层
+ */
+function showLoadingOverlay() {
+    loadingOverlay.style.display = 'flex';
+}
+
+/**
+ * 隐藏加载覆盖层
+ */
+function hideLoadingOverlay() {
+    loadingOverlay.style.display = 'none';
+}
 
 /**
  * 显示一个临时通知
@@ -223,6 +308,10 @@ const client = new MultimodalLiveClient();
  * @param {string} [type='info'] - 通知类型 (info, success, error)
  */
 function showNotification(message, type = 'info') {
+    // 移除之前存在的通知
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(n => n.remove());
+    
     const notification = document.createElement('div');
     notification.classList.add('notification', type, 'fade-in');
     notification.textContent = message;
@@ -230,11 +319,20 @@ function showNotification(message, type = 'info') {
     document.body.appendChild(notification);
     
     setTimeout(() => {
-        notification.style.opacity = '0';
+        notification.classList.remove('fade-in');
+        notification.classList.add('fade-out');
         setTimeout(() => {
             notification.remove();
         }, 300);
     }, 3000);
+}
+
+/**
+ * 生成唯一的聊天ID
+ * @returns {string} 唯一ID
+ */
+function generateChatId() {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 /**
@@ -258,7 +356,7 @@ function logMessage(message, type = 'system') {
             emoji.textContent = '⚙️';
             break;
         case 'user':
-            emoji.textContent = '🫵';
+            emoji.textContent = '🙋';
             break;
         case 'ai':
             emoji.textContent = '🤖';
@@ -267,6 +365,7 @@ function logMessage(message, type = 'system') {
     logEntry.appendChild(emoji);
 
     const messageText = document.createElement('span');
+    messageText.classList.add('message-text');
     messageText.textContent = message;
     logEntry.appendChild(messageText);
 
@@ -278,12 +377,136 @@ function logMessage(message, type = 'system') {
         behavior: 'smooth'
     });
     
-    // 添加渐入动画
-    logEntry.style.opacity = '0';
-    setTimeout(() => {
-        logEntry.style.opacity = '1';
-    }, 10);
+    // 保存到聊天历史
+    if (type !== 'system') {
+        if (!currentChatId) {
+            currentChatId = generateChatId();
+        }
+        
+        // 将消息添加到当前对话
+        const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
+        
+        // 限制历史长度，移除旧消息如果需要
+        if (chatHistory.length > 30) {
+            chatHistory.shift();
+        }
+        
+        if (existingChatIndex > -1) {
+            // 向现有对话添加消息
+            chatHistory[existingChatIndex].messages.push({
+                type,
+                content: message,
+                timestamp: new Date()
+            });
+        } else {
+            // 创建新对话
+            chatHistory.push({
+                id: currentChatId,
+                title: type === 'user' ? message.substring(0, 30) + (message.length > 30 ? '...' : '') : 'New Chat',
+                messages: [{
+                    type,
+                    content: message,
+                    timestamp: new Date()
+                }]
+            });
+        }
+        
+        // 保存到本地存储
+        localStorage.setItem('chat_history', JSON.stringify(chatHistory.slice(-30)));
+        
+        // 更新历史UI
+        updateHistoryUI();
+    }
 }
+
+/**
+ * 更新历史对话UI
+ */
+function updateHistoryUI() {
+    historyContainer.innerHTML = '';
+    
+    if (chatHistory.length === 0) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'empty-history-message';
+        emptyMessage.textContent = '暂无历史对话';
+        historyContainer.appendChild(emptyMessage);
+        return;
+    }
+    
+    // 获取最近的10个对话
+    chatHistory.slice(-10).reverse().forEach(chat => {
+        const historyItem = document.createElement('div');
+        historyItem.className = 'history-item';
+        historyItem.dataset.chatId = chat.id;
+        
+        const historyTitle = document.createElement('div');
+        historyTitle.className = 'history-title';
+        historyTitle.textContent = chat.title;
+        
+        const historyTime = document.createElement('div');
+        historyTime.className = 'history-time';
+        historyTime.textContent = new Date(chat.messages[0].timestamp).toLocaleString();
+        
+        historyItem.appendChild(historyTitle);
+        historyItem.appendChild(historyTime);
+        
+        historyItem.addEventListener('click', () => {
+            // 加载聊天历史
+            loadChatHistory(chat.id);
+        });
+        
+        historyContainer.appendChild(historyItem);
+    });
+}
+
+/**
+ * 加载特定的聊天历史
+ * @param {string} chatId - 聊天ID
+ */
+function loadChatHistory(chatId) {
+    // 找到指定的聊天
+    const chat = chatHistory.find(c => c.id === chatId);
+    if (!chat) return;
+    
+    // 清空当前聊天
+    logsContainer.innerHTML = '';
+    
+    // 显示历史消息
+    chat.messages.forEach(message => {
+        logMessage(message.content, message.type);
+    });
+    
+    // 设置当前聊天ID
+    currentChatId = chatId;
+    
+    // 关闭任何打开的设置面板
+    configContainer.classList.remove('active');
+    
+    // 显示通知
+    showNotification('已加载历史对话');
+    
+    // 如果未连接，尝试连接
+    if (!isConnected) {
+        connectToWebsocket();
+    }
+}
+
+/**
+ * 清空当前聊天
+ */
+function clearChat() {
+    // 清空UI
+    logsContainer.innerHTML = '';
+    
+    // 创建新聊天会话
+    currentChatId = generateChatId();
+    
+    // 显示系统消息
+    logMessage('聊天已清空。', 'system');
+}
+
+// 清空聊天按钮事件处理
+clearChatButton.addEventListener('click', clearChat);
 
 /**
  * 根据录音状态更新麦克风图标。
@@ -339,6 +562,12 @@ async function ensureAudioInitialized() {
  */
 async function handleMicToggle() {
     if (!isRecording) {
+        // 如果未连接，先尝试连接
+        if (!isConnected) {
+            await connectToWebsocket();
+            if (!isConnected) return;
+        }
+        
         try {
             await ensureAudioInitialized();
             audioRecorder = new AudioRecorder();
@@ -416,6 +645,10 @@ async function connectToWebsocket() {
     if (!apiKeyInput.value) {
         logMessage('请输入API密钥', 'system');
         showNotification('请输入API密钥', 'error');
+        
+        // 自动显示设置面板
+        configContainer.classList.add('active');
+        apiKeyInput.focus();
         return;
     }
 
@@ -423,6 +656,8 @@ async function connectToWebsocket() {
         // 显示连接中状态
         connectButton.textContent = '连接中...';
         connectButton.disabled = true;
+        connectionStatus.textContent = '连接中...';
+        showLoadingOverlay();
         
         // 保存值到localStorage
         localStorage.setItem('gemini_api_key', apiKeyInput.value);
@@ -460,8 +695,25 @@ async function connectToWebsocket() {
         cameraButton.disabled = false;
         screenButton.disabled = false;
         
+        // 更新连接状态指示器
+        connectionStatus.textContent = '已连接';
+        connectionStatus.classList.add('online');
+        
         logMessage('已连接到Gemini 2.0 Flash多模态实时API', 'system');
         showNotification('连接成功', 'success');
+        
+        // 隐藏任何打开的设置面板
+        configContainer.classList.remove('active');
+        
+        // 创建新对话会话
+        if (!currentChatId) {
+            currentChatId = generateChatId();
+        }
+        
+        // 聚焦输入框
+        messageInput.focus();
+        
+        hideLoadingOverlay();
     } catch (error) {
         const errorMessage = error.message || '未知错误';
         Logger.error('连接错误:', error);
@@ -476,7 +728,12 @@ async function connectToWebsocket() {
         cameraButton.disabled = true;
         screenButton.disabled = true;
         
+        // 更新连接状态指示器
+        connectionStatus.textContent = '未连接';
+        connectionStatus.classList.remove('online');
+        
         showNotification('连接失败: ' + errorMessage, 'error');
+        hideLoadingOverlay();
     }
 }
 
@@ -502,6 +759,11 @@ function disconnectFromWebsocket() {
     micButton.disabled = true;
     cameraButton.disabled = true;
     screenButton.disabled = true;
+    
+    // 更新连接状态指示器
+    connectionStatus.textContent = '未连接';
+    connectionStatus.classList.remove('online');
+    
     logMessage('已断开与服务器的连接', 'system');
     showNotification('已断开连接');
     
@@ -520,13 +782,44 @@ function disconnectFromWebsocket() {
 function handleSendMessage() {
     const message = messageInput.value.trim();
     if (message) {
-        logMessage(message, 'user');
-        client.send({ text: message });
-        messageInput.value = '';
-        
-        // 聚焦回输入框
-        messageInput.focus();
+        // 如果未连接，先尝试连接
+        if (!isConnected) {
+            connectToWebsocket().then(() => {
+                if (isConnected) {
+                    sendMessage(message);
+                }
+            });
+        } else {
+            sendMessage(message);
+        }
     }
+}
+
+/**
+ * 发送消息到服务器
+ * @param {string} message 消息内容
+ */
+function sendMessage(message) {
+    logMessage(message, 'user');
+    client.send({ text: message });
+    messageInput.value = '';
+    
+    // 重置文本区域高度
+    messageInput.style.height = 'auto';
+    
+    // 聚焦回输入框
+    messageInput.focus();
+}
+
+// 尝试从本地存储中加载聊天历史
+try {
+    const savedHistory = localStorage.getItem('chat_history');
+    if (savedHistory) {
+        chatHistory = JSON.parse(savedHistory);
+        updateHistoryUI();
+    }
+} catch (error) {
+    console.error('Failed to load chat history:', error);
 }
 
 // 事件监听器
@@ -535,7 +828,11 @@ client.on('open', () => {
 });
 
 client.on('log', (log) => {
-    logMessage(`${log.type}: ${JSON.stringify(log.message)}`, 'system');
+    console.log(`${log.type}: ${JSON.stringify(log.message)}`);
+    // 不在UI上显示所有日志，只显示重要的
+    if (log.type === 'error') {
+        logMessage(`${log.type}: ${JSON.stringify(log.message)}`, 'system');
+    }
 });
 
 client.on('close', (event) => {
@@ -551,6 +848,10 @@ client.on('close', (event) => {
         micButton.disabled = true;
         cameraButton.disabled = true;
         screenButton.disabled = true;
+        
+        // 更新连接状态指示器
+        connectionStatus.textContent = '未连接';
+        connectionStatus.classList.remove('online');
         
         showNotification('连接已断开，请重新连接', 'error');
     }
@@ -600,11 +901,7 @@ client.on('turncomplete', () => {
 });
 
 client.on('error', (error) => {
-    if (error instanceof ApplicationError) {
-        Logger.error(`应用错误: ${error.message}`, error);
-    } else {
-        Logger.error('意外错误', error);
-    }
+    Logger.error(`应用错误: ${error.message}`, error);
     logMessage(`错误: ${error.message}`, 'system');
     showNotification('发生错误: ' + error.message, 'error');
 });
@@ -619,8 +916,11 @@ client.on('message', (message) => {
 
 // 按钮事件监听器
 sendButton.addEventListener('click', handleSendMessage);
+
+// 支持Enter发送，Shift+Enter换行
 messageInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault(); // 阻止默认的换行行为
         handleSendMessage();
     }
 });
@@ -650,11 +950,18 @@ connectButton.textContent = '连接';
 async function handleVideoToggle() {
     Logger.info('视频切换被点击，当前状态:', { isVideoActive, isConnected });
     
+    // 如果未连接，先尝试连接
+    if (!isConnected) {
+        await connectToWebsocket();
+        if (!isConnected) return;
+    }
+    
     localStorage.setItem('video_fps', fpsInput.value);
 
     if (!isVideoActive) {
         try {
             Logger.info('尝试启动视频');
+            showLoadingOverlay();
             if (!videoManager) {
                 videoManager = new VideoManager();
             }
@@ -671,7 +978,7 @@ async function handleVideoToggle() {
             Logger.info('摄像头启动成功');
             logMessage('摄像头已启动', 'system');
             showNotification('摄像头已启动', 'success');
-
+            hideLoadingOverlay();
         } catch (error) {
             Logger.error('摄像头错误:', error);
             logMessage(`错误: ${error.message}`, 'system');
@@ -680,6 +987,7 @@ async function handleVideoToggle() {
             cameraIcon.textContent = 'videocam';
             cameraButton.classList.remove('active');
             showNotification('摄像头访问失败: ' + error.message, 'error');
+            hideLoadingOverlay();
         }
     } else {
         Logger.info('停止视频');
@@ -710,8 +1018,15 @@ stopVideoButton.addEventListener('click', stopVideo);
  * @returns {Promise<void>}
  */
 async function handleScreenShare() {
+    // 如果未连接，先尝试连接
+    if (!isConnected) {
+        await connectToWebsocket();
+        if (!isConnected) return;
+    }
+    
     if (!isScreenSharing) {
         try {
+            showLoadingOverlay();
             screenContainer.style.display = 'block';
             
             screenRecorder = new ScreenRecorder();
@@ -730,7 +1045,7 @@ async function handleScreenShare() {
             Logger.info('屏幕共享已启动');
             logMessage('屏幕共享已启动', 'system');
             showNotification('屏幕共享已启动', 'success');
-
+            hideLoadingOverlay();
         } catch (error) {
             Logger.error('屏幕共享错误:', error);
             logMessage(`错误: ${error.message}`, 'system');
@@ -739,6 +1054,7 @@ async function handleScreenShare() {
             screenButton.classList.remove('active');
             screenContainer.style.display = 'none';
             showNotification('屏幕共享失败: ' + error.message, 'error');
+            hideLoadingOverlay();
         }
     } else {
         stopScreenSharing();
@@ -764,33 +1080,6 @@ function stopScreenSharing() {
 screenButton.addEventListener('click', handleScreenShare);
 screenContainer.querySelector('.close-button').addEventListener('click', stopScreenSharing);
 
-// 添加通知样式
-const notificationStyle = document.createElement('style');
-notificationStyle.textContent = `
-    .notification {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 10px 20px;
-        border-radius: 4px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        font-size: 14px;
-        z-index: 2000;
-        opacity: 1;
-        transition: opacity 0.3s ease;
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
-    }
-    .notification.success {
-        background: rgba(52, 168, 83, 0.9);
-    }
-    .notification.error {
-        background: rgba(234, 67, 53, 0.9);
-    }
-`;
-document.head.appendChild(notificationStyle);
-
 // 自动聚焦消息输入框（当启用时）
 function focusInput() {
     if (!messageInput.disabled) {
@@ -798,8 +1087,9 @@ function focusInput() {
     }
 }
 
-// 在页面加载后和连接成功后聚焦输入框
+// 在页面加载后显示欢迎消息
 window.addEventListener('load', () => {
     // 添加欢迎消息
-    logMessage('欢迎使用 Gemini Playground，请点击右上角的"连接"按钮开始', 'system');
+    logMessage('欢迎使用 Gemini Playground，一个多模态API体验工具', 'system');
+    logMessage('点击右上角的"连接"按钮开始，或者进入设置页面配置API密钥', 'system');
 });
