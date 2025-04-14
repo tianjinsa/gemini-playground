@@ -37,113 +37,13 @@
 }
 
 body {
-    font-family: sans-serif;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    font-family: var(--font-family);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
     min-height: 100vh;
-    background-color: #f4f4f4; /* Slightly lighter background */
-}
-
-#container {
-    width: 90%;
-    max-width: 800px; /* Limit maximum width */
-    height: 80vh; /* Set a height */
-    background-color: #fff;
-    border-radius: 8px; /* Rounded corners */
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */
     display: flex;
-    flex-direction: column; /* Stack elements vertically */
-    overflow: hidden; /* Prevent content overflow */
-}
-
-#messages {
-    flex-grow: 1; /* Allow messages div to take available space */
-    overflow-y: auto; /* Enable vertical scrolling */
-    padding: 20px;
-    border-bottom: 1px solid #eee; /* Separator line */
-}
-
-.message {
-    margin-bottom: 15px;
-    padding: 10px 15px;
-    border-radius: 18px; /* More rounded messages */
-    line-height: 1.4;
-    max-width: 75%; /* Limit message width */
-}
-
-.user-message {
-    background-color: #007bff; /* Blue for user */
-    color: white;
-    align-self: flex-end; /* Align user messages to the right */
-    margin-left: auto; /* Push to the right */
-    border-bottom-right-radius: 5px; /* Adjust corner for bubble effect */
-}
-
-.ai-message {
-    background-color: #e9e9eb; /* Light grey for AI */
-    color: #333;
-    align-self: flex-start; /* Align AI messages to the left */
-    margin-right: auto; /* Push to the left */
-    border-bottom-left-radius: 5px; /* Adjust corner for bubble effect */
-}
-
-#input-area {
-    display: flex;
-    padding: 15px;
-    border-top: 1px solid #eee; /* Separator line */
-    background-color: #f9f9f9; /* Slightly different background for input area */
-}
-
-#input {
-    flex-grow: 1; /* Take available space */
-    padding: 10px 15px;
-    border: 1px solid #ccc;
-    border-radius: 20px; /* Rounded input field */
-    margin-right: 10px;
-    font-size: 1em;
-    outline: none; /* Remove default outline */
-    transition: border-color 0.3s ease;
-}
-
-#input:focus {
-    border-color: #007bff; /* Highlight on focus */
-}
-
-#send {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 20px; /* Rounded button */
-    cursor: pointer;
-    font-size: 1em;
-    transition: background-color 0.3s ease; /* Smooth transition */
-}
-
-#send:hover {
-    background-color: #0056b3; /* Darker blue on hover */
-}
-
-/* Scrollbar styling (optional, for better aesthetics) */
-#messages::-webkit-scrollbar {
-    width: 6px;
-}
-
-#messages::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-#messages::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 10px;
-}
-
-#messages::-webkit-scrollbar-thumb:hover {
-    background: #aaa;
+    flex-direction: column;
 }
 
 #app {
