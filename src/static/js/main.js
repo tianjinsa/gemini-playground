@@ -803,3 +803,6 @@ window.addEventListener('load', () => {
     // 添加欢迎消息
     logMessage('欢迎使用 Gemini Playground，请点击右上角的"连接"按钮开始', 'system');
 });
+
+const messagesDiv = document.getElementById('messages');
+const input = document.getElementById('input');
