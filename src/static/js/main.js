@@ -508,8 +508,21 @@ function updateHistoryUI() {
         historyTime.className = 'history-time';
         historyTime.textContent = new Date(chat.messages[0].timestamp).toLocaleString();
         
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'history-delete-btn';
+        deleteButton.innerHTML = '🗑️';
+        deleteButton.title = '删除此对话';
+        deleteButton.setAttribute('aria-label', '删除对话');
+        
+        // 阻止冒泡，避免点击删除按钮时触发加载历史记录
+        deleteButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            deleteHistory(chat.id);
+        });
+        
         historyItem.appendChild(historyTitle);
         historyItem.appendChild(historyTime);
+        historyItem.appendChild(deleteButton);
         
         historyItem.addEventListener('click', () => {
             // 加载聊天历史
@@ -518,6 +531,35 @@ function updateHistoryUI() {
         
         historyContainer.appendChild(historyItem);
     });
+}
+
+/**
+ * 删除特定的聊天历史
+ * @param {string} chatId - 聊天ID
+ */
+function deleteHistory(chatId) {
+    // 找到聊天记录的索引
+    const chatIndex = chatHistory.findIndex(c => c.id === chatId);
+    if (chatIndex === -1) return;
+    
+    // 从数组中删除该记录
+    chatHistory.splice(chatIndex, 1);
+    
+    // 更新本地存储
+    localStorage.setItem('chat_history', JSON.stringify(chatHistory));
+    
+    // 更新UI
+    updateHistoryUI();
+    
+    // 如果删除的是当前聊天，则清空当前视图
+    if (currentChatId === chatId) {
+        logsContainer.innerHTML = '';
+        currentChatId = generateChatId();
+        logMessage('聊天已删除', 'system');
+    }
+    
+    // 显示通知
+    showNotification('对话已删除', 'info');
 }
 
 /**
@@ -924,6 +966,10 @@ client.on('audio', async (data) => {
     }
 });
 
+// 创建或获取一个AI响应的消息容器
+let currentAiResponse = null;
+let currentResponseText = '';
+
 client.on('content', (data) => {
     if (data.modelTurn) {
         if (data.modelTurn.parts.some(part => part.functionCall)) {
@@ -938,7 +984,65 @@ client.on('content', (data) => {
 
         const text = data.modelTurn.parts.map(part => part.text).join('');
         if (text) {
-            logMessage(text, 'ai');
+            // 流式文本处理
+            if (!currentAiResponse) {
+                // 创建一个新的AI回复元素
+                currentAiResponse = document.createElement('div');
+                currentAiResponse.classList.add('log-entry', 'ai');
+                
+                const timestamp = document.createElement('span');
+                timestamp.classList.add('timestamp');
+                timestamp.textContent = new Date().toLocaleTimeString();
+                currentAiResponse.appendChild(timestamp);
+                
+                const emoji = document.createElement('span');
+                emoji.classList.add('emoji');
+                emoji.textContent = '🤖';
+                currentAiResponse.appendChild(emoji);
+                
+                const messageText = document.createElement('span');
+                messageText.classList.add('message-text');
+                messageText.textContent = '';
+                currentAiResponse.appendChild(messageText);
+                
+                logsContainer.appendChild(currentAiResponse);
+                currentResponseText = '';
+                
+                // 滚动到最新消息
+                logsContainer.scrollTo({
+                    top: logsContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+            
+            // 更新文本内容
+            currentResponseText += text;
+            const messageText = currentAiResponse.querySelector('.message-text');
+            messageText.textContent = currentResponseText;
+            
+            // 保存到聊天历史，但暂时不更新UI
+            if (currentChatId) {
+                const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
+                if (existingChatIndex > -1) {
+                    // 找到当前会话中的最后一条AI消息，更新它
+                    const aiMessages = chatHistory[existingChatIndex].messages.filter(m => m.type === 'ai');
+                    if (aiMessages.length > 0) {
+                        // 更新最后一条AI消息
+                        const lastAiMessage = aiMessages[aiMessages.length - 1];
+                        lastAiMessage.content = currentResponseText;
+                    } else {
+                        // 添加新消息
+                        chatHistory[existingChatIndex].messages.push({
+                            type: 'ai',
+                            content: currentResponseText,
+                            timestamp: new Date()
+                        });
+                    }
+                }
+                
+                // 保存到本地存储
+                localStorage.setItem('chat_history', JSON.stringify(chatHistory.slice(-30)));
+            }
         }
     }
 });
@@ -959,6 +1063,38 @@ client.on('turncomplete', () => {
     isUsingTool = false;
     logMessage('对话回合结束', 'system');
     hideToolIndicator();
+    
+    // 重置当前响应变量，准备下一次交互
+    if (currentAiResponse) {
+        // 在完成时将最终消息保存到聊天历史
+        if (currentChatId) {
+            const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
+            if (existingChatIndex > -1) {
+                // 检查是否已经有相同内容的消息了
+                const hasMessage = chatHistory[existingChatIndex].messages.some(
+                    m => m.type === 'ai' && m.content === currentResponseText
+                );
+                
+                // 如果没有相同内容的消息，添加一条新消息
+                if (!hasMessage) {
+                    chatHistory[existingChatIndex].messages.push({
+                        type: 'ai',
+                        content: currentResponseText,
+                        timestamp: new Date()
+                    });
+                    
+                    // 保存到本地存储
+                    localStorage.setItem('chat_history', JSON.stringify(chatHistory.slice(-30)));
+                    
+                    // 更新历史UI
+                    updateHistoryUI();
+                }
+            }
+        }
+        
+        currentAiResponse = null;
+        currentResponseText = '';
+    }
 });
 
 client.on('error', (error) => {
