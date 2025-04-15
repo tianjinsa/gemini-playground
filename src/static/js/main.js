@@ -110,7 +110,7 @@ window.addEventListener('load', () => {
     ]);
     
     // 隐藏加载覆盖层
-    hideLoadingOverlay();
+    hideLoading();
 });
 
 import { MultimodalLiveClient } from './core/websocket-client.js';
@@ -120,6 +120,7 @@ import { CONFIG } from './config/config.js';
 import { Logger } from './utils/logger.js';
 import { VideoManager } from './video/video-manager.js';
 import { ScreenRecorder } from './video/screen-recorder.js';
+import { ErrorCodes } from './utils/error-boundary.js';
 
 /**
  * @fileoverview Main entry point for the application.
@@ -161,6 +162,8 @@ const themeIcon = document.getElementById('theme-icon');
 const historyContainer = document.getElementById('history-container');
 const presetButtons = document.querySelectorAll('.preset-button');
 const loadingOverlay = document.getElementById('loading-overlay');
+const toolIndicator = document.getElementById('tool-indicator');
+const toolName = document.querySelector('.tool-name');
 
 // 从localStorage加载保存的值
 const savedApiKey = localStorage.getItem('gemini_api_key');
@@ -291,17 +294,73 @@ let currentChatId = null;
 const client = new MultimodalLiveClient();
 
 /**
- * 显示加载覆盖层
+ * 显示加载覆盖层，带有自定义消息
+ * @param {string} message - 要显示的加载消息
  */
-function showLoadingOverlay() {
+function showLoading(message = '加载中...') {
+    const loadingContent = loadingOverlay.querySelector('.loading-content p') || 
+                          loadingOverlay.querySelector('p');
+    
+    if (loadingContent) {
+        loadingContent.textContent = message;
+    } else {
+        const loadingContentDiv = document.createElement('div');
+        loadingContentDiv.className = 'loading-content';
+        loadingContentDiv.innerHTML = `
+            <div class="loading-spinner"></div>
+            <p>${message}</p>
+        `;
+        loadingOverlay.innerHTML = '';
+        loadingOverlay.appendChild(loadingContentDiv);
+    }
+    
     loadingOverlay.style.display = 'flex';
+    document.body.classList.add('loading-active');
+    
+    // 为屏幕阅读器添加状态标记
+    loadingOverlay.setAttribute('aria-busy', 'true');
+    loadingOverlay.setAttribute('role', 'progressbar');
+    loadingOverlay.setAttribute('aria-label', message);
 }
 
 /**
  * 隐藏加载覆盖层
  */
-function hideLoadingOverlay() {
+function hideLoading() {
     loadingOverlay.style.display = 'none';
+    document.body.classList.remove('loading-active');
+    
+    // 清除状态标记
+    loadingOverlay.removeAttribute('aria-busy');
+}
+
+/**
+ * 处理错误并显示给用户
+ * @param {string|Error} error - 错误对象或错误消息
+ * @param {string} [context=''] - 错误发生的上下文描述
+ */
+function handleError(error, context = '') {
+    const errorMessage = error instanceof Error ? error.message : error;
+    const contextPrefix = context ? `${context}: ` : '';
+    
+    // 记录到控制台
+    Logger.error(`${contextPrefix}${errorMessage}`, error);
+    
+    // 记录到日志区域
+    logMessage(`错误: ${contextPrefix}${errorMessage}`, 'system');
+    
+    // 显示通知
+    showNotification(`${contextPrefix}${errorMessage}`, 'error');
+    
+    // 确保加载指示器被隐藏
+    hideLoading();
+    
+    // 根据错误类型执行其他操作
+    if (error.code === ErrorCodes.WEBSOCKET_CONNECTION_FAILED ||
+        error.code === ErrorCodes.API_AUTHENTICATION_FAILED) {
+        // 在认证或连接问题时显示设置面板
+        configContainer.classList.add('active');
+    }
 }
 
 /**
@@ -529,7 +588,7 @@ function updateAudioVisualizer(volume, isInput = false) {
     const visualizer = isInput ? inputAudioVisualizer : audioVisualizer;
     const audioBar = visualizer.querySelector('.audio-bar') || document.createElement('div');
     
-    if (!visualizer.contains(audioBar)) {
+    if (!audioBar.classList.contains('audio-bar')) {
         audioBar.classList.add('audio-bar');
         visualizer.appendChild(audioBar);
     }
@@ -609,11 +668,9 @@ async function handleMicToggle() {
             updateMicIcon();
             showNotification('麦克风已启动', 'success');
         } catch (error) {
-            Logger.error('麦克风错误:', error);
-            logMessage(`错误: ${error.message}`, 'system');
+            handleError(error, '麦克风错误');
             isRecording = false;
             updateMicIcon();
-            showNotification('麦克风访问失败: ' + error.message, 'error');
         }
     } else {
         if (audioRecorder && isRecording) {
@@ -660,7 +717,7 @@ async function connectToWebsocket() {
         connectButton.textContent = '连接中...';
         connectButton.disabled = true;
         connectionStatus.textContent = '连接中...';
-        showLoadingOverlay();
+        showLoading('连接中...');
         
         // 保存值到localStorage
         localStorage.setItem('gemini_api_key', apiKeyInput.value);
@@ -716,11 +773,9 @@ async function connectToWebsocket() {
         // 聚焦输入框
         messageInput.focus();
         
-        hideLoadingOverlay();
+        hideLoading();
     } catch (error) {
-        const errorMessage = error.message || '未知错误';
-        Logger.error('连接错误:', error);
-        logMessage(`连接错误: ${errorMessage}`, 'system');
+        handleError(error, '连接错误');
         isConnected = false;
         connectButton.textContent = '连接';
         connectButton.classList.remove('connected');
@@ -735,8 +790,7 @@ async function connectToWebsocket() {
         connectionStatus.textContent = '未连接';
         connectionStatus.classList.remove('online');
         
-        showNotification('连接失败: ' + errorMessage, 'error');
-        hideLoadingOverlay();
+        hideLoading();
     }
 }
 
@@ -875,9 +929,11 @@ client.on('content', (data) => {
         if (data.modelTurn.parts.some(part => part.functionCall)) {
             isUsingTool = true;
             Logger.info('模型正在使用工具');
+            showToolIndicator(data.modelTurn.parts.find(part => part.functionCall).functionCall.name);
         } else if (data.modelTurn.parts.some(part => part.functionResponse)) {
             isUsingTool = false;
             Logger.info('工具使用完成');
+            hideToolIndicator();
         }
 
         const text = data.modelTurn.parts.map(part => part.text).join('');
@@ -892,6 +948,7 @@ client.on('interrupted', () => {
     isUsingTool = false;
     Logger.info('模型被中断');
     logMessage('模型被中断', 'system');
+    hideToolIndicator();
 });
 
 client.on('setupcomplete', () => {
@@ -901,19 +958,16 @@ client.on('setupcomplete', () => {
 client.on('turncomplete', () => {
     isUsingTool = false;
     logMessage('对话回合结束', 'system');
+    hideToolIndicator();
 });
 
 client.on('error', (error) => {
-    Logger.error(`应用错误: ${error.message}`, error);
-    logMessage(`错误: ${error.message}`, 'system');
-    showNotification('发生错误: ' + error.message, 'error');
+    handleError(error, '应用错误');
 });
 
 client.on('message', (message) => {
     if (message.error) {
-        Logger.error('服务器错误:', message.error);
-        logMessage(`服务器错误: ${message.error}`, 'system');
-        showNotification('服务器错误: ' + message.error, 'error');
+        handleError(message.error, '服务器错误');
     }
 });
 
@@ -964,7 +1018,7 @@ async function handleVideoToggle() {
     if (!isVideoActive) {
         try {
             Logger.info('尝试启动视频');
-            showLoadingOverlay();
+            showLoading('启动视频中...');
             if (!videoManager) {
                 videoManager = new VideoManager();
             }
@@ -982,17 +1036,15 @@ async function handleVideoToggle() {
             Logger.info('摄像头启动成功');
             logMessage('摄像头已启动', 'system');
             showNotification('摄像头已启动', 'success');
-            hideLoadingOverlay();
+            hideLoading();
         } catch (error) {
-            Logger.error('摄像头错误:', error);
-            logMessage(`错误: ${error.message}`, 'system');
+            handleError(error, '摄像头错误');
             isVideoActive = false;
             videoManager = null;
             // 使用表情符号替换文本图标
             cameraIcon.textContent = '📷';
             cameraButton.classList.remove('active');
-            showNotification('摄像头访问失败: ' + error.message, 'error');
-            hideLoadingOverlay();
+            hideLoading();
         }
     } else {
         Logger.info('停止视频');
@@ -1032,7 +1084,7 @@ async function handleScreenShare() {
     
     if (!isScreenSharing) {
         try {
-            showLoadingOverlay();
+            showLoading('启动屏幕共享中...');
             screenContainer.style.display = 'block';
             
             screenRecorder = new ScreenRecorder();
@@ -1052,17 +1104,15 @@ async function handleScreenShare() {
             Logger.info('屏幕共享已启动');
             logMessage('屏幕共享已启动', 'system');
             showNotification('屏幕共享已启动', 'success');
-            hideLoadingOverlay();
+            hideLoading();
         } catch (error) {
-            Logger.error('屏幕共享错误:', error);
-            logMessage(`错误: ${error.message}`, 'system');
+            handleError(error, '屏幕共享错误');
             isScreenSharing = false;
             // 使用表情符号替换文本图标
             screenIcon.textContent = '📺';
             screenButton.classList.remove('active');
             screenContainer.style.display = 'none';
-            showNotification('屏幕共享失败: ' + error.message, 'error');
-            hideLoadingOverlay();
+            hideLoading();
         }
     } else {
         stopScreenSharing();
@@ -1094,6 +1144,28 @@ function focusInput() {
     if (!messageInput.disabled) {
         messageInput.focus();
     }
+}
+
+/**
+ * 显示工具使用指示器
+ * @param {string} toolName - 工具名称
+ */
+function showToolIndicator(name) {
+    toolName.textContent = `正在使用工具: ${name}...`;
+    toolIndicator.style.display = 'block';
+    toolIndicator.setAttribute('aria-hidden', 'false');
+}
+
+/**
+ * 隐藏工具使用指示器
+ */
+function hideToolIndicator() {
+    toolIndicator.classList.add('closing');
+    setTimeout(() => {
+        toolIndicator.style.display = 'none';
+        toolIndicator.classList.remove('closing');
+        toolIndicator.setAttribute('aria-hidden', 'true');
+    }, 300);
 }
 
 // 在页面加载后显示欢迎消息

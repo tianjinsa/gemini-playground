@@ -22,27 +22,27 @@
                 <h1>Gemini Playground</h1>
             </div>
             <div class="header-controls">
-                <button id="theme-toggle" class="icon-button" title="切换主题">
+                <button id="theme-toggle" class="icon-button" title="切换主题" aria-label="切换主题">
                     <span id="theme-icon" class="emoji-icon">🌙</span>
                 </button>
                 <button id="connect-button" class="connect-button">连接</button>
-                <button id="config-toggle" class="icon-button" title="设置">
+                <button id="config-toggle" class="icon-button" title="设置" aria-label="设置">
                     <span class="emoji-icon">⚙️</span>
                 </button>
             </div>
         </header>
         
-        <div id="config-container" class="hidden-mobile">
+        <aside id="config-container" class="hidden-mobile">
             <div class="config-header">
                 <h2>设置</h2>
-                <button class="close-config emoji-icon">❌</button>
+                <button class="close-config emoji-icon" aria-label="关闭设置">❌</button>
             </div>
             <div class="config-wrapper">
                 <div class="api-key-container">
                     <label for="api-key">API Key</label>
                     <div class="api-key-input-wrapper">
-                        <input type="password" id="api-key" placeholder="请输入Gemini API Key" />
-                        <button id="toggle-api-visibility" class="icon-button" title="显示/隐藏API Key">
+                        <input type="password" id="api-key" placeholder="请输入Gemini API Key" aria-label="API Key" />
+                        <button id="toggle-api-visibility" class="icon-button" title="显示/隐藏API Key" aria-label="显示/隐藏API Key">
                             <span class="emoji-icon">👁️</span>
                         </button>
                     </div>
@@ -53,7 +53,7 @@
                     <h3>语音设置</h3>
                     <div class="setting-container">
                         <label for="voice-select">声音: </label>
-                        <select id="voice-select">
+                        <select id="voice-select" aria-label="声音选择">
                             <option value="Puck">Puck (男声)</option>
                             <option value="Charon">Charon (男声)</option>
                             <option value="Fenrir">Fenrir (男声)</option>
@@ -63,7 +63,7 @@
                     </div>
                     <div class="setting-container">
                         <label for="response-type-select">回复类型: </label>
-                        <select id="response-type-select">
+                        <select id="response-type-select" aria-label="回复类型选择">
                             <option value="text">文本</option>
                             <option value="audio" selected>音频</option>
                         </select>
@@ -74,14 +74,14 @@
                     <h3>视频设置</h3>
                     <div class="setting-container">
                         <label for="fps-input">视频帧率 (FPS): </label>
-                        <input type="number" id="fps-input" value="1" min="1" max="30" step="1"/>
+                        <input type="number" id="fps-input" value="1" min="1" max="30" step="1" aria-label="视频帧率 (FPS)" />
                         <span class="fps-help">高帧率需要更多的网络带宽</span>
                     </div>
                 </div>
                 
                 <div class="setting-group">
                     <h3>系统指令</h3>
-                    <textarea id="system-instruction" placeholder="输入自定义系统指令..." rows="6"></textarea>
+                    <textarea id="system-instruction" placeholder="输入自定义系统指令..." rows="6" aria-label="系统指令"></textarea>
                 </div>
                 
                 <button id="apply-config" class="primary-button">确认</button>
@@ -94,37 +94,37 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </aside>
         
-        <div class="main-content">
+        <main class="main-content">
             <div class="chat-container">
                 <div class="chat-header">
-                    <span id="connection-status" class="status-indicator offline">未连接</span>
+                    <span id="connection-status" class="status-indicator offline" role="status" aria-live="polite">未连接</span>
                     <div class="chat-tools">
-                        <button id="clear-chat" class="text-button" title="清空聊天记录">
+                        <button id="clear-chat" class="text-button" title="清空聊天记录" aria-label="清空聊天记录">
                             <span class="emoji-icon">🗑️</span>
                             清空聊天
                         </button>
                     </div>
                 </div>
 
-                <div id="logs-container"></div>
+                <div id="logs-container" aria-live="polite" aria-relevant="additions" role="log"></div>
                 
                 <div class="input-container">
                     <div class="message-input-wrapper">
-                        <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
+                        <textarea id="message-input" placeholder="输入消息..." rows="1" aria-label="消息输入"></textarea>
                         <div class="shortcut-hint">按 Enter 发送，Shift+Enter 换行</div>
                     </div>
                     <div class="action-buttons">
-                        <button id="send-button" class="primary-button">发送</button>
+                        <button id="send-button" class="primary-button" aria-label="发送消息">发送</button>
                         <div class="tool-buttons">
-                            <button id="mic-button" class="icon-button" title="麦克风">
+                            <button id="mic-button" class="icon-button" title="麦克风" aria-label="麦克风">
                                 <span id="mic-icon" class="emoji-icon">🎤</span>
                             </button>
-                            <button id="camera-button" class="icon-button" title="摄像头">
+                            <button id="camera-button" class="icon-button" title="摄像头" aria-label="摄像头">
                                 <span id="camera-icon" class="emoji-icon">📷</span>
                             </button>
-                            <button id="screen-button" class="icon-button" title="屏幕分享">
+                            <button id="screen-button" class="icon-button" title="屏幕分享" aria-label="屏幕分享">
                                 <span id="screen-icon" class="emoji-icon">📺</span>
                             </button>
                         </div>
@@ -132,7 +132,7 @@
                 </div>
             </div>
             
-            <div class="sidebar">
+            <aside class="sidebar">
                 <div class="visualizer-panel">
                     <h3>音频可视化</h3>
                     <div class="audio-visualizers">
@@ -154,17 +154,17 @@
                         <div class="empty-history-message">暂无历史对话</div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </aside>
+        </main>
         
         <div id="video-container" style="display: none;">
             <div class="video-header">
                 <span class="video-title">摄像头预览</span>
                 <div class="video-controls">
-                    <button id="flip-camera" class="icon-button" title="翻转摄像头">
+                    <button id="flip-camera" class="icon-button" title="翻转摄像头" aria-label="翻转摄像头">
                         <span class="emoji-icon">🔄</span>
                     </button>
-                    <button id="stop-video" class="danger-button">停止视频</button>
+                    <button id="stop-video" class="danger-button" aria-label="停止视频">停止视频</button>
                 </div>
             </div>
             <video id="preview" playsinline autoplay muted></video>
@@ -173,7 +173,7 @@
         <div id="screen-container" style="display: none;">
             <div class="screen-header">
                 <span class="screen-title">屏幕共享</span>
-                <button class="close-button emoji-icon">❌</button>
+                <button class="close-button emoji-icon" aria-label="关闭屏幕共享">❌</button>
             </div>
             <video id="screen-preview" playsinline autoplay muted></video>
         </div>
@@ -191,10 +191,24 @@
     </div>
 
     <!-- 加载提示 -->
-    <div id="loading-overlay">
+    <div id="loading-overlay" role="dialog" aria-modal="true" aria-labelledby="loading-title" aria-describedby="loading-description">
         <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <p>加载中...</p>
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h2 id="loading-title" class="visually-hidden">处理中</h2>
+            <p id="loading-description">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 工具使用指示器 -->
+    <div id="tool-indicator" class="tool-indicator" role="status" aria-live="polite">
+        <div class="tool-indicator-content">
+            <div class="tool-icon">🔧</div>
+            <div class="tool-info">
+                <p class="tool-name">使用工具中...</p>
+                <div class="tool-progress-bar">
+                    <div class="tool-progress"></div>
+                </div>
+            </div>
         </div>
     </div>
 

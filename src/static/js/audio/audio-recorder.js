@@ -90,6 +90,32 @@ export class AudioRecorder {
                 this.stream = null;
             }
 
+            // Clean up the audio context and connections
+            if (this.processor) {
+                // Remove event listeners
+                if (this.processor.port && this.processor.port.onmessage) {
+                    this.processor.port.onmessage = null;
+                }
+                
+                // Disconnect audio nodes
+                this.processor.disconnect();
+                this.processor = null;
+            }
+
+            if (this.source) {
+                this.source.disconnect();
+                this.source = null;
+            }
+
+            if (this.audioContext && this.audioContext.state !== 'closed') {
+                // Close audio context if it's not already closed
+                this.audioContext.close().catch(err => {
+                    Logger.warn('Error closing audio context:', err);
+                });
+                this.audioContext = null;
+            }
+
+            this.onAudioData = null;
             this.isRecording = false;
             Logger.info('Audio recording stopped successfully');
         } catch (error) {
@@ -142,4 +168,4 @@ export class AudioRecorder {
             );
         }
     }
-} 
+}

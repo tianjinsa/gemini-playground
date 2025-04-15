@@ -154,22 +154,50 @@ export class ScreenRecorder {
         try {
             this.isRecording = false;
             
+            // Clear capture interval
             if (this.captureInterval) {
                 clearInterval(this.captureInterval);
                 this.captureInterval = null;
             }
 
+            // Stop all tracks in the stream
             if (this.stream) {
-                this.stream.getTracks().forEach(track => track.stop());
+                this.stream.getTracks().forEach(track => {
+                    try {
+                        track.stop();
+                    } catch (trackError) {
+                        Logger.warn(`Error stopping track: ${trackError.message}`);
+                    }
+                });
                 this.stream = null;
             }
 
+            // Clean up preview element
             if (this.previewElement) {
-                this.previewElement.srcObject = null;
+                try {
+                    this.previewElement.pause();
+                    this.previewElement.srcObject = null;
+                } catch (previewError) {
+                    Logger.warn(`Error cleaning up preview element: ${previewError.message}`);
+                }
                 this.previewElement = null;
             }
 
-            Logger.info('Screen recording stopped');
+            // Clean up canvas context if needed
+            if (this.frameCtx) {
+                try {
+                    // Clear canvas
+                    this.frameCtx.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
+                } catch (canvasError) {
+                    Logger.warn(`Error clearing canvas: ${canvasError.message}`);
+                }
+            }
+
+            // Reset frame counter and callback
+            this.frameCount = 0;
+            this.onScreenData = null;
+
+            Logger.info('Screen recording stopped successfully');
 
         } catch (error) {
             Logger.error('Failed to stop screen recording:', error);
@@ -216,4 +244,4 @@ export class ScreenRecorder {
         }
         return true;
     }
-} 
+}

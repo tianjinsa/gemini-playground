@@ -103,15 +103,18 @@ export class ErrorBoundary {
      * @param {Object} options - 配置选项
      * @param {Function} options.onError - 错误处理回调
      * @param {boolean} options.silent - 是否静默处理错误（不显示给用户）
+     * @param {number} options.autoHideDelay - 自动隐藏错误通知的延迟时间(ms)，默认5000ms
      */
     constructor(options = {}) {
         this.options = {
             onError: (error) => console.error('Uncaught error:', error),
             silent: false,
+            autoHideDelay: 5000,
             ...options
         };
         
         this.setupGlobalHandlers();
+        this.activeNotifications = new Set(); // 跟踪当前显示的错误通知
     }
     
     /**
@@ -122,13 +125,13 @@ export class ErrorBoundary {
         // 处理未捕获的 Promise 异常
         window.addEventListener('unhandledrejection', (event) => {
             console.error('Unhandled Promise rejection:', event.reason);
-            this.handleError(event.reason);
+            this.handleError(event.reason || new Error('未知的 Promise 异常'));
             event.preventDefault();
         });
         
         // 处理未捕获的 JS 异常
         window.addEventListener('error', (event) => {
-            console.error('Uncaught error:', event.error);
+            console.error('Uncaught error:', event.error || event.message);
             this.handleError(event.error || new Error(event.message));
             event.preventDefault();
         });
@@ -140,6 +143,18 @@ export class ErrorBoundary {
      * @private
      */
     handleError(error) {
+        // 标准化错误对象
+        if (!(error instanceof Error)) {
+            if (typeof error === 'string') {
+                error = new Error(error);
+            } else if (error && typeof error === 'object') {
+                error = new Error(error.message || JSON.stringify(error));
+            } else {
+                error = new Error('发生了未知错误');
+            }
+        }
+
+        // 调用错误回调
         this.options.onError(error);
         
         if (!this.options.silent) {
@@ -153,54 +168,111 @@ export class ErrorBoundary {
      * @private
      */
     showErrorToUser(error) {
+        // 获取友好的错误消息
+        let errorMessage = this.getFriendlyErrorMessage(error);
+        
         // 创建错误提示元素
         const errorContainer = document.createElement('div');
         errorContainer.className = 'error-notification';
+        errorContainer.setAttribute('role', 'alert');
+        errorContainer.setAttribute('aria-live', 'assertive');
+        
         errorContainer.innerHTML = `
-            <div class="error-notification-content">
-                <div class="error-notification-header">
-                    <span class="error-title">出错了</span>
-                    <button class="error-close">&times;</button>
-                </div>
-                <div class="error-notification-body">
-                    <p>${error.message || '发生了未知错误'}</p>
-                </div>
+            <div class="error-notification-header">
+                <span class="error-title">出错了</span>
+                <button class="error-close" aria-label="关闭错误提示">&times;</button>
+            </div>
+            <div class="error-notification-body">
+                <p>${errorMessage}</p>
             </div>
         `;
         
-        // 添加样式
-        errorContainer.style.position = 'fixed';
-        errorContainer.style.bottom = '20px';
-        errorContainer.style.right = '20px';
-        errorContainer.style.backgroundColor = '#f44336';
-        errorContainer.style.color = 'white';
-        errorContainer.style.padding = '15px';
-        errorContainer.style.borderRadius = '4px';
-        errorContainer.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
-        errorContainer.style.zIndex = '9999';
-        errorContainer.style.maxWidth = '300px';
+        // 添加到页面
+        document.body.appendChild(errorContainer);
+        this.activeNotifications.add(errorContainer);
         
         // 添加关闭按钮事件
         const closeButton = errorContainer.querySelector('.error-close');
-        closeButton.style.cursor = 'pointer';
-        closeButton.style.float = 'right';
-        closeButton.style.fontSize = '20px';
-        closeButton.style.fontWeight = 'bold';
-        closeButton.style.marginLeft = '10px';
-        
         closeButton.addEventListener('click', () => {
-            document.body.removeChild(errorContainer);
+            this.dismissNotification(errorContainer);
         });
         
-        // 添加到页面
-        document.body.appendChild(errorContainer);
-        
-        // 5秒后自动消失
-        setTimeout(() => {
-            if (document.body.contains(errorContainer)) {
-                document.body.removeChild(errorContainer);
+        // 支持键盘事件
+        closeButton.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                this.dismissNotification(errorContainer);
             }
-        }, 5000);
+        });
+        
+        // 自动隐藏
+        if (this.options.autoHideDelay > 0) {
+            setTimeout(() => {
+                if (document.body.contains(errorContainer)) {
+                    this.dismissNotification(errorContainer);
+                }
+            }, this.options.autoHideDelay);
+        }
+    }
+
+    /**
+     * 平滑关闭通知
+     * @param {HTMLElement} notification - 通知元素
+     */
+    dismissNotification(notification) {
+        if (!notification || !document.body.contains(notification)) return;
+        
+        notification.classList.add('closing');
+        this.activeNotifications.delete(notification);
+        
+        // 动画结束后移除元素
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, 300); // 300ms 是动画的持续时间
+    }
+
+    /**
+     * 获取友好的错误消息
+     * @param {Error} error - 错误对象
+     * @returns {string} 友好的错误消息
+     */
+    getFriendlyErrorMessage(error) {
+        // 根据错误类型提供友好的消息
+        if (error.code) {
+            switch(error.code) {
+                case ErrorCodes.AUDIO_PERMISSION_DENIED:
+                    return '无法访问麦克风。请确保您已授予麦克风权限，并且没有其他应用正在使用麦克风。';
+                
+                case ErrorCodes.SCREEN_PERMISSION_DENIED:
+                    return '无法共享屏幕。请确保您已授予屏幕共享权限。';
+                
+                case ErrorCodes.WEBSOCKET_CONNECTION_FAILED:
+                    return '连接服务器失败。请检查您的网络连接和 API Key 是否正确。';
+                
+                case ErrorCodes.API_AUTHENTICATION_FAILED:
+                    return 'API 认证失败。请确保您输入了正确的 API Key。';
+                
+                default:
+                    return error.message || '发生了未知错误';
+            }
+        }
+        
+        // 为常见错误提供友好消息
+        if (error.name === 'NotAllowedError') {
+            return '权限被拒绝。请确保您已授予相应的权限后重试。';
+        }
+        
+        if (error.name === 'NotFoundError') {
+            return '找不到需要的设备，如摄像头或麦克风。请确保您的设备已连接并正常工作。';
+        }
+        
+        if (error.message && error.message.includes('API key')) {
+            return 'API Key 无效或过期。请检查您的 API Key 是否正确。';
+        }
+        
+        return error.message || '发生了未知错误';
     }
     
     /**
@@ -227,6 +299,15 @@ export class ErrorBoundary {
                 throw error;
             }
         };
+    }
+
+    /**
+     * 关闭所有活动的通知
+     */
+    dismissAllNotifications() {
+        this.activeNotifications.forEach(notification => {
+            this.dismissNotification(notification);
+        });
     }
 }
 
