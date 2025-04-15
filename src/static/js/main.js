@@ -220,7 +220,8 @@ closeConfigBtn.addEventListener('click', () => {
 toggleApiVisibilityButton.addEventListener('click', () => {
     const isPassword = apiKeyInput.type === 'password';
     apiKeyInput.type = isPassword ? 'text' : 'password';
-    toggleApiVisibilityIcon.textContent = isPassword ? 'visibility' : 'visibility_off';
+    // 使用表情符号替换文本图标
+    toggleApiVisibilityButton.querySelector('.emoji-icon').textContent = isPassword ? '👁️' : '👁️‍🗨️';
 });
 
 // 主题切换
@@ -237,7 +238,8 @@ function toggleTheme() {
 
 function updateThemeIcon() {
     const currentTheme = document.documentElement.getAttribute('data-theme');
-    themeIcon.textContent = currentTheme === 'light' ? 'dark_mode' : 'light_mode';
+    // 使用表情符号替换文本图标
+    themeIcon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
 }
 
 applyConfigButton.addEventListener('click', () => {
@@ -512,7 +514,8 @@ clearChatButton.addEventListener('click', clearChat);
  * 根据录音状态更新麦克风图标。
  */
 function updateMicIcon() {
-    micIcon.textContent = isRecording ? 'mic_off' : 'mic';
+    // 使用表情符号替换文本图标
+    micIcon.textContent = isRecording ? '🛑' : '🎤';
     micButton.style.backgroundColor = isRecording ? '#ea4335' : '';
     micButton.classList.toggle('active', isRecording);
 }
@@ -973,7 +976,8 @@ async function handleVideoToggle() {
             });
 
             isVideoActive = true;
-            cameraIcon.textContent = 'videocam_off';
+            // 使用表情符号替换文本图标
+            cameraIcon.textContent = '📹';
             cameraButton.classList.add('active');
             Logger.info('摄像头启动成功');
             logMessage('摄像头已启动', 'system');
@@ -984,7 +988,8 @@ async function handleVideoToggle() {
             logMessage(`错误: ${error.message}`, 'system');
             isVideoActive = false;
             videoManager = null;
-            cameraIcon.textContent = 'videocam';
+            // 使用表情符号替换文本图标
+            cameraIcon.textContent = '📷';
             cameraButton.classList.remove('active');
             showNotification('摄像头访问失败: ' + error.message, 'error');
             hideLoadingOverlay();
@@ -1004,7 +1009,8 @@ function stopVideo() {
         videoManager = null;
     }
     isVideoActive = false;
-    cameraIcon.textContent = 'videocam';
+    // 使用表情符号替换文本图标
+    cameraIcon.textContent = '📷';
     cameraButton.classList.remove('active');
     logMessage('摄像头已停止', 'system');
     showNotification('摄像头已停止');
@@ -1040,7 +1046,8 @@ async function handleScreenShare() {
             });
 
             isScreenSharing = true;
-            screenIcon.textContent = 'stop_screen_share';
+            // 使用表情符号替换文本图标
+            screenIcon.textContent = '⏹️';
             screenButton.classList.add('active');
             Logger.info('屏幕共享已启动');
             logMessage('屏幕共享已启动', 'system');
@@ -1050,7 +1057,8 @@ async function handleScreenShare() {
             Logger.error('屏幕共享错误:', error);
             logMessage(`错误: ${error.message}`, 'system');
             isScreenSharing = false;
-            screenIcon.textContent = 'screen_share';
+            // 使用表情符号替换文本图标
+            screenIcon.textContent = '📺';
             screenButton.classList.remove('active');
             screenContainer.style.display = 'none';
             showNotification('屏幕共享失败: ' + error.message, 'error');
@@ -1070,7 +1078,8 @@ function stopScreenSharing() {
         screenRecorder = null;
     }
     isScreenSharing = false;
-    screenIcon.textContent = 'screen_share';
+    // 使用表情符号替换文本图标
+    screenIcon.textContent = '📺';
     screenButton.classList.remove('active');
     screenContainer.style.display = 'none';
     logMessage('屏幕共享已停止', 'system');

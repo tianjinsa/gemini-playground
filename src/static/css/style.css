@@ -138,6 +138,34 @@ body {
     align-items: center;
 }
 
+/* 添加表情符号图标样式 */
+.emoji-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-emoji {
+    font-size: 1.8rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--transition-normal);
+    cursor: default;
+}
+
+.logo-emoji:hover {
+    transform: rotate(15deg);
+}
+
+/* 移除原有的Material Icons相关样式 */
+.material-symbols-outlined {
+    display: none;
+}
+
 /* ===== Button Styles ===== */
 button {
     cursor: pointer;
