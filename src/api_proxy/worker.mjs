@@ -597,8 +597,18 @@ const safetySettings = harmCategory.map(category => ({
   category,
   threshold: "BLOCK_NONE",
 }));
-
-function transformConfig(req) {
+const fieldsMap = {
+  stop: "stopSequences",
+  n: "candidateCount", // not for streaming
+  max_tokens: "maxOutputTokens",
+  max_completion_tokens: "maxOutputTokens",
+  temperature: "temperature",
+  top_p: "topP",
+  top_k: "topK", // non-standard
+  frequency_penalty: "frequencyPenalty",
+  presence_penalty: "presencePenalty",
+};
+const transformConfig = (req) => {
   let cfg = {};
   //if (typeof req.stop === "string") { req.stop = [req.stop]; } // no need
   for (let key in req) {
@@ -627,7 +637,7 @@ function transformConfig(req) {
     }
   }
   return cfg;
-}
+};
 
 const parseImg = async (url) => {
   let mimeType, data;
@@ -657,7 +667,7 @@ const parseImg = async (url) => {
   };
 };
 
-async function transformMsg({ role, content }) {
+const transformMsg = async ({ role, content }) => {
   const parts = [];
   if (!Array.isArray(content)) {
     // system, user: string
@@ -665,7 +675,10 @@ async function transformMsg({ role, content }) {
     parts.push({ text: content });
     return { role, parts };
   }
-  // user: 多模态内容转换
+  // user:
+  // An array of content parts with a defined type.
+  // Supported options differ based on the model being used to generate the response.
+  // Can contain text, image, or audio inputs.
   for (const item of content) {
     switch (item.type) {
       case "text":
@@ -687,12 +700,12 @@ async function transformMsg({ role, content }) {
     }
   }
   if (content.every(item => item.type === "image_url")) {
-    parts.push({ text: "" });
+    parts.push({ text: "" }); // to avoid "Unable to submit request because it must have a text parameter"
   }
   return { role, parts };
-}
+};
 
-async function transformMessages(messages) {
+const transformMessages = async (messages) => {
   if (!messages) { return; }
   const contents = [];
   let system_instruction;
@@ -708,24 +721,21 @@ async function transformMessages(messages) {
   if (system_instruction && contents.length === 0) {
     contents.push({ role: "model", parts: { text: " " } });
   }
+  //console.info(JSON.stringify(contents, 2));
   return { system_instruction, contents };
-}
+};
 
-async function transformRequest(req) {
-  return {
-    ...(await transformMessages(req)),
-    safetySettings,
-    generationConfig: transformConfig(req),
-  };
-}
+const transformRequest = async (req) => ({
+  ...await transformMessages(req.messages),
+  safetySettings,
+  generationConfig: transformConfig(req),
+});
 
-function generateChatcmplId() {
+const generateChatcmplId = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  function randomChar() {
-    return characters[Math.floor(Math.random() * characters.length)];
-  }
+  const randomChar = () => characters[Math.floor(Math.random() * characters.length)];
   return "chatcmpl-" + Array.from({ length: 29 }, randomChar).join("");
-}
+};
 
 const reasonsMap = { //https://ai.google.dev/api/rest/v1/GenerateContentResponse#finishreason
   //"FINISH_REASON_UNSPECIFIED": // Default value. This value is unused.
@@ -878,15 +888,3 @@ function validateContentSafety(body) {
     }
   }
 }
-
-const fieldsMap = {
-  stop: "stopSequences",
-  n: "candidateCount", // not for streaming
-  max_tokens: "maxOutputTokens",
-  max_completion_tokens: "maxOutputTokens",
-  temperature: "temperature",
-  top_p: "topP",
-  top_k: "topK", // non-standard
-  frequency_penalty: "frequencyPenalty",
-  presence_penalty: "presencePenalty",
-};
