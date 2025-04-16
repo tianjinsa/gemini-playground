@@ -335,6 +335,14 @@ async function handleRawProxy(request, pathname, apiKey) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Raw proxy error (${response.status}): ${errorText}`);
+      if (response.status === 404) {
+        return new Response(JSON.stringify({ 
+          error: "API endpoint not found. Please verify your API URL or model." 
+        }), fixCors({ 
+          status: 404, 
+          headers: { 'Content-Type': 'application/json' } 
+        }));
+      }
       return new Response(errorText, fixCors({ 
         status: response.status, 
         statusText: response.statusText 
