@@ -197,8 +197,8 @@ export default {
             // 验证输入长度，防止过大请求
             if (Array.isArray(embeddingsBody.input)) {
               assert(
-                embeddingsBody.input.length <= 100, 
-                "Too many input items. Maximum allowed: 100", 
+                embeddingsBody.input.length <= 128, 
+                "Too many input items. Maximum allowed: 128", 
                 400
               );
             }
@@ -770,14 +770,14 @@ function validateContentSafety(body) {
     // 检查每条消息内容大小
     for (const message of body.messages) {
       if (typeof message.content === 'string') {
-        if (message.content.length > 100000) {  // 限制10万字符
-          throw new HttpError("Message content too large. Maximum allowed: 100000 characters", 400);
+        if (message.content.length > 1000000) {  // 限制10万字符
+          throw new HttpError("Message content too large. Maximum allowed: 1000000 characters", 400);
         }
       } else if (Array.isArray(message.content)) {
         // 检查多模态内容
         for (const part of message.content) {
-          if (part.type === 'text' && part.text.length > 100000) {
-            throw new HttpError("Text content too large. Maximum allowed: 100000 characters", 400);
+          if (part.type === 'text' && part.text.length > 1000000) {
+            throw new HttpError("Text content too large. Maximum allowed: 1000000 characters", 400);
           }
           
           // 检查图像URL
