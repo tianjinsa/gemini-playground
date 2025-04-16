@@ -4,9 +4,6 @@
 
 import { Buffer } from "node:buffer";
 
-// 默认的Google API密钥
-const DEFAULT_API_KEY = "";
-
 // 简单的内存缓存实现
 class MemoryCache {
   constructor(ttl = 300000) { // 默认5分钟过期
@@ -121,21 +118,11 @@ export default {
     };
     
     try {
-      const url = new URL(request.url);
-      const { pathname, searchParams } = url;
+      // 确定请求类型
+      const requestType = determineRequestType(request);
       
-      // 获取API密钥，优先级：
-      // 1. 查询参数中的key参数 (Google格式)
-      // 2. 查询参数中的api-key参数 (Google格式替代形式)
-      // 3. Authorization头部 (OpenAI格式)
-      // 4. X-Goog-Api-Key头部 (Google格式)
-      // 5. 默认API密钥
-      let apiKey = searchParams.get("key") || searchParams.get("api-key") || null;
-      if (!apiKey) {
-        const auth = request.headers.get("Authorization");
-        const googleApiKey = request.headers.get("X-Goog-Api-Key");
-        apiKey = googleApiKey || (auth?.split(" ")[1]) || DEFAULT_API_KEY;
-      }
+      // 根据请求类型获取API密钥
+      const apiKey = getApiKey(request, requestType);
       
       // 验证 API Key
       if (!apiKey) {
@@ -147,29 +134,9 @@ export default {
                        request.headers.get("X-Forwarded-For")?.split(",")[0] || 
                        "unknown";
       
-      const assert = (success, message = "Method not allowed", status = 405) => {
-        if (!success) {
-          throw new HttpError(message, status);
-        }
-      };
+      const { pathname } = new URL(request.url);
       
-      // 判断请求类型和是否需要直接代理
-      const requestType = determineRequestType(request, pathname);
-      
-      // 直接代理到 Gemini API 的情况:
-      // 1. 明确指定了 raw=true 查询参数
-      // 2. Gemini 格式的请求 (有X-Goog-Api-Key头或明显的Gemini API路径)
-      // 3. 不符合标准OpenAI API路径格式的请求
-      const isDirectProxy = searchParams.get("raw") === "true" || 
-                           requestType === REQUEST_TYPE.GEMINI || 
-                           !isOpenAIStandardPath(pathname);
-      
-      if (isDirectProxy) {
-        return await withRetry(() => handleRawProxy(request, pathname, apiKey))
-          .catch(errHandler);
-      }
-      
-      // 请求限流检查 (仅对OpenAI格式的API进行限流)
+      // 请求限流检查
       switch (true) {
         case pathname.endsWith("/chat/completions"):
           if (chatCompletionLimiter.isRateLimited(clientIP)) {
@@ -182,8 +149,20 @@ export default {
           }
           break;
       }
-
-      // OpenAI 格式API处理
+      
+      const assert = (success, message = "Method not allowed", status = 405) => {
+        if (!success) {
+          throw new HttpError(message, status);
+        }
+      };
+      
+      // 处理原生Gemini格式的请求
+      if (requestType === REQUEST_TYPE.GEMINI) {
+        return await withRetry(() => handleNativeGeminiRequest(request, apiKey))
+          .catch(errHandler);
+      }
+      
+      // 处理OpenAI格式的请求（现有逻辑）
       switch (true) {
         case pathname.endsWith("/chat/completions"):
           assert(request.method === "POST");
@@ -228,145 +207,70 @@ export default {
 /**
  * 确定请求的类型（OpenAI或Gemini原生格式）
  * @param {Request} request - 原始请求对象
- * @param {string} pathname - 请求路径
  * @returns {string} - 请求类型
  */
-function determineRequestType(request, pathname) {
-  // Gemini 格式判断标准:
-  // 1. 有 X-Goog-Api-Key 头
-  // 2. URL包含明显的Gemini API路径模式
+function determineRequestType(request) {
+  const hasAuthHeader = request.headers.has("Authorization");
   const hasGoogleApiKeyHeader = request.headers.has("X-Goog-Api-Key");
-  const hasAuthHeader = request.headers.get("Authorization")?.startsWith("Bearer ");
   
-  // 通过路径判断是否为Gemini API路径
-  const isGeminiPath = pathname.includes('generateContent') || 
-                      pathname.includes('streamGenerateContent') ||
-                      pathname.includes('batchEmbedContents') ||
-                      pathname.includes('embedContent') ||
-                      pathname.includes('/models/');
-  
-  // Gemini原生格式的判断
-  if (hasGoogleApiKeyHeader || (isGeminiPath && !isOpenAIStandardPath(pathname))) {
+  // 优先判断Gemini原生格式
+  if (hasGoogleApiKeyHeader) {
     return REQUEST_TYPE.GEMINI;
   }
   
-  // OpenAI格式的判断
-  if (hasAuthHeader || isOpenAIStandardPath(pathname)) {
+  // 其次判断OpenAI格式
+  if (hasAuthHeader) {
     return REQUEST_TYPE.OPENAI;
   }
   
-  // 默认为未知类型，将尝试作为直接代理处理
-  return REQUEST_TYPE.UNKNOWN;
+  // 默认当作OpenAI格式处理（兼容现有逻辑）
+  return REQUEST_TYPE.OPENAI;
 }
 
 /**
- * 判断是否为标准OpenAI API路径
- * @param {string} pathname - 请求路径
- * @returns {boolean} - 是否为OpenAI标准路径
- */
-function isOpenAIStandardPath(pathname) {
-  // OpenAI标准API路径以/v1结尾或包含以下路径
-  return pathname.endsWith("/chat/completions") || 
-         pathname.endsWith("/completions") ||
-         pathname.endsWith("/embeddings") || 
-         pathname.endsWith("/models") ||
-         pathname.match(/^\/v1\/?$/);
-}
-
-/**
- * 处理原生Gemini格式请求或直接代理请求
+ * 根据请求类型获取合适的API密钥
  * @param {Request} request - 原始请求对象
- * @param {string} pathname - 路径
+ * @param {string} requestType - 请求类型
+ * @returns {string|null} - API密钥
+ */
+function getApiKey(request, requestType) {
+  if (requestType === REQUEST_TYPE.GEMINI) {
+    return request.headers.get("X-Goog-Api-Key");
+  } else {
+    const auth = request.headers.get("Authorization");
+    return auth?.split(" ")[1]; // Bearer token格式处理
+  }
+}
+
+/**
+ * 处理原生Gemini格式请求
+ * @param {Request} request - 原始请求对象
  * @param {string} apiKey - Google API密钥
  * @returns {Promise<Response>} - 请求响应
  */
-async function handleRawProxy(request, pathname, apiKey) {
-  try {
-    const url = new URL(request.url);
-    const { searchParams } = url;
-    
-    // 构建目标URL
-    // 1. 从路径中移除可能的API版本前缀
-    let apiPath = pathname.replace(/^\/v\d+(\.\d+)?/, '');
-    
-    // 2. 确定适当的API路径
-    let targetUrl;
-    if (apiPath.startsWith("/models") || 
-        apiPath.includes("generateContent") || 
-        apiPath.includes("embedContent")) {
-      // 已经是有效的Gemini API路径
-      targetUrl = `${CONFIG.BASE_URL}/${CONFIG.API_VERSION}${apiPath}`;
-    } else {
-      // 尝试作为直接路径处理，保留原始路径
-      targetUrl = `${CONFIG.BASE_URL}/${CONFIG.API_VERSION}${apiPath}`;
-    }
-    
-    console.log(`Direct proxy request to: ${targetUrl}`);
-    
-    // 确定是否为流式请求
-    const isStream = searchParams.get("stream") === "true" || 
-                    apiPath.includes("streamGenerateContent");
-    
-    // 如果是流式请求，确保添加适当的查询参数
-    if (isStream && !targetUrl.includes("alt=sse")) {
-      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "alt=sse";
-    }
-    
-    // 复制原始查询参数到目标URL (除了控制参数如raw)
-    for (const [key, value] of searchParams.entries()) {
-      if (key !== "raw" && !targetUrl.includes(`${key}=`)) {
-        targetUrl += (targetUrl.includes("?") ? "&" : "?") + `${key}=${encodeURIComponent(value)}`;
-      }
-    }
-    
-    // 创建一个新的请求对象
-    const requestBody = request.method !== "GET" ? await request.text() : undefined;
-    
-    // 发送请求到Google API
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: makeHeaders(apiKey, { 
-        "Content-Type": request.headers.get("Content-Type") || "application/json" 
-      }),
-      body: requestBody,
-    });
-    
-    // 如果响应不成功，记录错误信息
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Raw proxy error (${response.status}): ${errorText}`);
-      return new Response(errorText, fixCors({ 
-        status: response.status, 
-        statusText: response.statusText 
-      }));
-    }
-    
-    // 处理流式响应
-    if (isStream) {
-      // 设置正确的内容类型和其他头信息
-      const headers = new Headers({
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      });
-      
-      // 添加CORS头
-      headers.set("Access-Control-Allow-Origin", "*");
-      
-      // 直接返回流，不做任何转换
-      return new Response(response.body, {
-        headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
-    
-    // 对于非流式响应，直接返回Google API的响应
-    return new Response(response.body, fixCors(response));
-  } catch (err) {
-    console.error("Raw proxy error:", err);
-    throw new HttpError(err.message, 500);
-  }
+async function handleNativeGeminiRequest(request, apiKey) {
+  // 从请求URL中提取目标路径
+  const url = new URL(request.url);
+  const { pathname, search } = url;
+  
+  // 构建对Google API的请求URL
+  const targetUrl = `${CONFIG.BASE_URL}${pathname}${search}`;
+  
+  // 克隆原始请求的headers和body
+  const headers = new Headers(request.headers);
+  
+  // 确保请求带上API密钥
+  headers.set("x-goog-api-key", apiKey);
+  
+  // 转发请求到Google API
+  const response = await fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: request.body,
+  });
+  
+  // 返回响应时添加CORS头
+  return new Response(response.body, fixCors(response));
 }
 
 class HttpError extends Error {
