@@ -13,6 +13,17 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <style>
+        #history-container, .history-panel, .history-sidebar {
+            display: none !important;
+        }
+        
+        /* 如果主内容区域有根据历史面板调整的布局，需要修正 */
+        .main-content-area {
+            width: 100% !important;
+            margin-left: 0 !important;
+        }
+    </style>
 </head>
 <body>
     <div id="app">
@@ -144,14 +155,6 @@
                             <label>输出音频</label>
                             <div id="audio-visualizer"></div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="history-panel">
-                    <h3>历史对话</h3>
-                    <div id="history-container">
-                        <!-- 历史对话记录将在这里动态生成 -->
-                        <div class="empty-history-message">暂无历史对话</div>
                     </div>
                 </div>
             </aside>

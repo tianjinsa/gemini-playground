@@ -159,7 +159,6 @@ const toggleApiVisibilityButton = document.getElementById('toggle-api-visibility
 const toggleApiVisibilityIcon = toggleApiVisibilityButton.querySelector('.material-symbols-outlined');
 const themeToggleButton = document.getElementById('theme-toggle');
 const themeIcon = document.getElementById('theme-icon');
-const historyContainer = document.getElementById('history-container');
 const presetButtons = document.querySelectorAll('.preset-button');
 const loadingOverlay = document.getElementById('loading-overlay');
 const toolIndicator = document.getElementById('tool-indicator');
@@ -287,11 +286,7 @@ let videoManager = null;
 let isScreenSharing = false;
 let screenRecorder = null;
 let isUsingTool = false;
-let chatHistory = [];
 let currentChatId = null;
-
-// 多模态客户端
-const client = new MultimodalLiveClient();
 
 /**
  * 显示加载覆盖层，带有自定义消息
@@ -397,35 +392,6 @@ function generateChatId() {
 }
 
 /**
- * 为历史记录生成更有意义的标题
- * @param {Array} messages - 对话消息数组
- * @returns {string} 生成的标题
- */
-function generateChatTitle(messages) {
-    // 优先使用第一条用户消息作为标题
-    const firstUserMsg = messages.find(m => m.type === 'user');
-    
-    if (firstUserMsg) {
-        // 提取更合适的标题长度
-        let title = firstUserMsg.content.substring(0, 25);
-        
-        // 智能截断，尽量在词尾结束
-        if (firstUserMsg.content.length > 25) {
-            const lastSpace = title.lastIndexOf(' ');
-            if (lastSpace > 15) { // 确保不会截断太短
-                title = title.substring(0, lastSpace);
-            }
-            title += '...';
-        }
-        
-        return title;
-    }
-    
-    // 如果没有用户消息，使用日期时间作为标题
-    return `对话 ${new Date().toLocaleDateString()}`;
-}
-
-/**
  * 在UI上记录消息。
  * @param {string} message - 要记录的消息。
  * @param {string} [type='system'] - 消息类型 (system, user, ai).
@@ -466,333 +432,6 @@ function logMessage(message, type = 'system') {
         top: logsContainer.scrollHeight,
         behavior: 'smooth'
     });
-    
-    // 保存到聊天历史
-    if (type !== 'system') {
-        if (!currentChatId) {
-            currentChatId = generateChatId();
-        }
-        
-        // 将消息添加到当前对话
-        const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
-        
-        // 限制历史长度，移除旧消息如果需要
-        if (chatHistory.length > 30) {
-            chatHistory.shift();
-        }
-        
-        if (existingChatIndex > -1) {
-            // 向现有对话添加消息
-            chatHistory[existingChatIndex].messages.push({
-                type,
-                content: message,
-                timestamp: new Date()
-            });
-            
-            // 如果是用户消息，更新标题
-            if (type === 'user') {
-                chatHistory[existingChatIndex].title = generateChatTitle(chatHistory[existingChatIndex].messages);
-            }
-        } else {
-            // 创建新对话
-            chatHistory.push({
-                id: currentChatId,
-                title: type === 'user' ? generateChatTitle([{type, content: message}]) : '新对话',
-                messages: [{
-                    type,
-                    content: message,
-                    timestamp: new Date()
-                }]
-            });
-        }
-        
-        // 保存到本地存储
-        localStorage.setItem('chat_history', JSON.stringify(chatHistory.slice(-30)));
-        
-        // 更新历史UI
-        updateHistoryUI();
-    }
-}
-
-/**
- * 更新历史对话UI
- */
-function updateHistoryUI() {
-    historyContainer.innerHTML = '';
-    
-    if (chatHistory.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'empty-history-message';
-        emptyMessage.textContent = '暂无历史对话';
-        historyContainer.appendChild(emptyMessage);
-        return;
-    }
-    
-    // 按最新修改时间排序（而非创建时间）
-    const sortedHistory = [...chatHistory].sort((a, b) => {
-        const aTime = new Date(a.messages[a.messages.length - 1].timestamp);
-        const bTime = new Date(b.messages[b.messages.length - 1].timestamp);
-        return bTime - aTime; // 降序排列，最新的在前
-    });
-    
-    // 获取最近的10个对话
-    sortedHistory.slice(0, 10).forEach(chat => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'history-item';
-        if (chat.id === currentChatId) {
-            historyItem.classList.add('active');
-        }
-        historyItem.dataset.chatId = chat.id;
-        
-        const historyTitle = document.createElement('div');
-        historyTitle.className = 'history-title';
-        historyTitle.textContent = chat.title;
-        
-        const historyTime = document.createElement('div');
-        historyTime.className = 'history-time';
-        // 使用更友好的时间格式化
-        historyTime.textContent = formatDateTime(new Date(chat.messages[chat.messages.length - 1].timestamp));
-        
-        const msgCount = document.createElement('div');
-        msgCount.className = 'message-count';
-        msgCount.textContent = `${chat.messages.length}条消息`;
-        
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'history-delete-btn';
-        deleteButton.innerHTML = '🗑️';
-        deleteButton.title = '删除此对话';
-        deleteButton.setAttribute('aria-label', '删除对话');
-        
-        // 阻止冒泡，避免点击删除按钮时触发加载历史记录
-        deleteButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            deleteHistory(chat.id);
-        });
-        
-        historyItem.appendChild(historyTitle);
-        historyItem.appendChild(historyTime);
-        historyItem.appendChild(msgCount);
-        historyItem.appendChild(deleteButton);
-        
-        historyItem.addEventListener('click', () => {
-            // 加载聊天历史
-            loadChatHistory(chat.id);
-        });
-        
-        historyContainer.appendChild(historyItem);
-    });
-    
-    // 添加历史管理功能区
-    if (chatHistory.length > 0) {
-        const historyActions = document.createElement('div');
-        historyActions.className = 'history-actions';
-        
-        const exportButton = document.createElement('button');
-        exportButton.className = 'history-action-btn';
-        exportButton.innerHTML = '📤 导出全部历史';
-        exportButton.title = '导出所有对话历史';
-        exportButton.addEventListener('click', exportChatHistory);
-        
-        const importButton = document.createElement('button');
-        importButton.className = 'history-action-btn';
-        importButton.innerHTML = '📥 导入历史';
-        importButton.title = '导入对话历史';
-        importButton.addEventListener('click', () => {
-            // 创建并触发文件选择器
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.json';
-            fileInput.style.display = 'none';
-            fileInput.addEventListener('change', importChatHistory);
-            document.body.appendChild(fileInput);
-            fileInput.click();
-            // 使用完毕后移除
-            fileInput.addEventListener('blur', () => {
-                document.body.removeChild(fileInput);
-            });
-        });
-        
-        const clearAllButton = document.createElement('button');
-        clearAllButton.className = 'history-action-btn danger';
-        clearAllButton.innerHTML = '🗑️ 清空全部历史';
-        clearAllButton.title = '删除所有历史对话';
-        clearAllButton.addEventListener('click', clearAllHistory);
-        
-        historyActions.appendChild(exportButton);
-        historyActions.appendChild(importButton);
-        historyActions.appendChild(clearAllButton);
-        
-        historyContainer.appendChild(historyActions);
-    }
-}
-
-/**
- * 删除特定的聊天历史
- * @param {string} chatId - 聊天ID
- */
-function deleteHistory(chatId) {
-    // 找到聊天记录的索引
-    const chatIndex = chatHistory.findIndex(c => c.id === chatId);
-    if (chatIndex === -1) return;
-    
-    // 从数组中删除该记录
-    chatHistory.splice(chatIndex, 1);
-    
-    // 更新本地存储
-    localStorage.setItem('chat_history', JSON.stringify(chatHistory));
-    
-    // 更新UI
-    updateHistoryUI();
-    
-    // 如果删除的是当前聊天，则清空当前视图
-    if (currentChatId === chatId) {
-        logsContainer.innerHTML = '';
-        currentChatId = generateChatId();
-        logMessage('聊天已删除', 'system');
-    }
-    
-    // 显示通知
-    showNotification('对话已删除', 'info');
-}
-
-/**
- * 加载特定的聊天历史
- * @param {string} chatId - 聊天ID
- */
-function loadChatHistory(chatId) {
-    // 找到指定的聊天
-    const chat = chatHistory.find(c => c.id === chatId);
-    if (!chat) return;
-    
-    // 清空当前聊天
-    logsContainer.innerHTML = '';
-    
-    // 创建一个系统消息，标记这是历史记录
-    const historyMarker = document.createElement('div');
-    historyMarker.className = 'log-entry system history-marker';
-    historyMarker.innerHTML = `<span class="emoji">📜</span> <span class="message-text">正在查看历史对话: "${chat.title}"</span>`;
-    logsContainer.appendChild(historyMarker);
-    
-    // 显示历史消息
-    chat.messages.forEach(message => {
-        const logEntry = document.createElement('div');
-        logEntry.classList.add('log-entry', message.type);
-
-        const timestamp = document.createElement('span');
-        timestamp.classList.add('timestamp');
-        timestamp.textContent = new Date(message.timestamp).toLocaleTimeString();
-        logEntry.appendChild(timestamp);
-
-        const emoji = document.createElement('span');
-        emoji.classList.add('emoji');
-        switch (message.type) {
-            case 'system':
-                emoji.textContent = '⚙️';
-                break;
-            case 'user':
-                emoji.textContent = '🙋';
-                break;
-            case 'ai':
-                emoji.textContent = '🤖';
-                break;
-        }
-        logEntry.appendChild(emoji);
-
-        const messageText = document.createElement('span');
-        messageText.classList.add('message-text');
-        messageText.textContent = message.content;
-        logEntry.appendChild(messageText);
-
-        logsContainer.appendChild(logEntry);
-    });
-    
-    // 滚动到顶部以便看到开始部分
-    logsContainer.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
-    
-    // 设置当前聊天ID
-    currentChatId = chatId;
-    
-    // 关闭任何打开的设置面板
-    configContainer.classList.remove('active');
-    
-    // 显示通知
-    showNotification('已加载历史对话', 'success');
-    
-    // 重置当前AI响应变量
-    currentAiResponse = null;
-    currentResponseText = '';
-    
-    // 更新历史UI中的活动项
-    updateHistoryUI();
-}
-
-/**
- * 清空当前聊天
- */
-function clearChat() {
-    // 清空UI
-    logsContainer.innerHTML = '';
-    
-    // 创建新聊天会话
-    currentChatId = generateChatId();
-    
-    // 显示系统消息
-    logMessage('聊天已清空。', 'system');
-}
-
-// 清空聊天按钮事件处理
-clearChatButton.addEventListener('click', clearChat);
-
-/**
- * 根据录音状态更新麦克风图标。
- */
-function updateMicIcon() {
-    // 使用表情符号替换文本图标
-    micIcon.textContent = isRecording ? '🛑' : '🎤';
-    micButton.style.backgroundColor = isRecording ? '#ea4335' : '';
-    micButton.classList.toggle('active', isRecording);
-}
-
-/**
- * 根据音量更新音频可视化器。
- * @param {number} volume - 音频音量(0.0 到 1.0)。
- * @param {boolean} [isInput=false] - 是否为输入音频的可视化器。
- */
-function updateAudioVisualizer(volume, isInput = false) {
-    const visualizer = isInput ? inputAudioVisualizer : audioVisualizer;
-    const audioBar = visualizer.querySelector('.audio-bar') || document.createElement('div');
-    
-    if (!audioBar.classList.contains('audio-bar')) {
-        audioBar.classList.add('audio-bar');
-        visualizer.appendChild(audioBar);
-    }
-    
-    audioBar.style.width = `${volume * 100}%`;
-    if (volume > 0.05) {
-        audioBar.classList.add('active');
-    } else {
-        audioBar.classList.remove('active');
-    }
-}
-
-/**
- * 如果尚未初始化，则初始化音频上下文和流传输器。
- * @returns {Promise<AudioStreamer>} 音频流传输器实例。
- */
-async function ensureAudioInitialized() {
-    if (!audioCtx) {
-        audioCtx = new AudioContext();
-    }
-    if (!audioStreamer) {
-        audioStreamer = new AudioStreamer(audioCtx);
-        await audioStreamer.addWorklet('vumeter-out', 'js/audio/worklets/vol-meter.js', (ev) => {
-            updateAudioVisualizer(ev.data.volume);
-        });
-    }
-    return audioStreamer;
 }
 
 /**
@@ -1045,17 +684,6 @@ function sendMessage(message) {
     messageInput.focus();
 }
 
-// 尝试从本地存储中加载聊天历史
-try {
-    const savedHistory = localStorage.getItem('chat_history');
-    if (savedHistory) {
-        chatHistory = JSON.parse(savedHistory);
-        updateHistoryUI();
-    }
-} catch (error) {
-    console.error('Failed to load chat history:', error);
-}
-
 // 事件监听器
 client.on('open', () => {
     logMessage('WebSocket连接已打开', 'system');
@@ -1154,29 +782,6 @@ client.on('content', (data) => {
             currentResponseText += text;
             const messageText = currentAiResponse.querySelector('.message-text');
             messageText.textContent = currentResponseText;
-            
-            // 保存到聊天历史，但暂时不更新UI，避免频繁更新
-            if (currentChatId) {
-                const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
-                if (existingChatIndex > -1) {
-                    const aiMessageIndex = chatHistory[existingChatIndex].messages.findIndex(m => m.type === 'ai' && m.isPartial === true);
-                    
-                    if (aiMessageIndex > -1) {
-                        // 更新已有的临时AI消息
-                        chatHistory[existingChatIndex].messages[aiMessageIndex].content = currentResponseText;
-                    } else {
-                        // 添加新的临时AI消息，标记为部分响应
-                        chatHistory[existingChatIndex].messages.push({
-                            type: 'ai',
-                            content: currentResponseText,
-                            timestamp: new Date(),
-                            isPartial: true  // 标记为部分响应
-                        });
-                    }
-                }
-                
-                // 不要频繁保存到本地存储，等响应完成时再保存
-            }
         }
     }
 });
@@ -1200,40 +805,6 @@ client.on('turncomplete', () => {
     
     // 重置当前响应变量，准备下一次交互
     if (currentAiResponse) {
-        // 在完成时将最终消息保存到聊天历史
-        if (currentChatId) {
-            const existingChatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
-            if (existingChatIndex > -1) {
-                // 查找并移除临时AI消息
-                const tempMessageIndex = chatHistory[existingChatIndex].messages.findIndex(
-                    m => m.type === 'ai' && m.isPartial === true
-                );
-                
-                if (tempMessageIndex > -1) {
-                    // 将临时消息替换为最终版本
-                    chatHistory[existingChatIndex].messages[tempMessageIndex] = {
-                        type: 'ai',
-                        content: currentResponseText,
-                        timestamp: new Date()
-                    };
-                } else {
-                    // 如果没有找到临时消息（通常不会发生），添加新消息
-                    chatHistory[existingChatIndex].messages.push({
-                        type: 'ai',
-                        content: currentResponseText,
-                        timestamp: new Date()
-                    });
-                }
-                
-                // 保存到本地存储
-                localStorage.setItem('chat_history', JSON.stringify(chatHistory.slice(-30)));
-                
-                // 更新历史UI
-                updateHistoryUI();
-            }
-        }
-        
-        // 重置当前AI响应的状态
         currentAiResponse = null;
         currentResponseText = '';
     }
@@ -1484,129 +1055,81 @@ function formatDateTime(date) {
 }
 
 /**
- * 导出所有聊天历史
+ * 清空当前聊天
  */
-function exportChatHistory() {
-    try {
-        // 准备导出的数据
-        const exportData = {
-            version: '1.0',
-            timestamp: new Date().toISOString(),
-            chats: chatHistory
-        };
+function clearChat() {
+    // 清空UI
+    logsContainer.innerHTML = '';
+    
+    // 创建新聊天会话
+    currentChatId = generateChatId();
+    
+    // 显示系统消息
+    logMessage('聊天已清空。', 'system');
+    
+    // 如果已连接，断开并重新连接websocket以清空AI上下文
+    if (isConnected) {
+        // 先断开连接
+        client.disconnect();
+        isConnected = false;
         
-        // 创建Blob对象
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
-            type: 'application/json' 
+        // 然后重新连接
+        connectToWebsocket().then(() => {
+            logMessage('已重置AI上下文', 'system');
+        }).catch(error => {
+            handleError(error, '重连错误');
         });
-        
-        // 创建下载链接
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `gemini-chat-history-${new Date().toISOString().slice(0, 10)}.json`;
-        
-        // 触发下载
-        document.body.appendChild(a);
-        a.click();
-        
-        // 清理
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
-        
-        showNotification('历史记录已导出', 'success');
-    } catch (error) {
-        handleError(error, '导出历史记录失败');
+    }
+}
+
+// 清空聊天按钮事件处理
+clearChatButton.addEventListener('click', clearChat);
+
+/**
+ * 根据录音状态更新麦克风图标。
+ */
+function updateMicIcon() {
+    // 使用表情符号替换文本图标
+    micIcon.textContent = isRecording ? '🛑' : '🎤';
+    micButton.style.backgroundColor = isRecording ? '#ea4335' : '';
+    micButton.classList.toggle('active', isRecording);
+}
+
+/**
+ * 根据音量更新音频可视化器。
+ * @param {number} volume - 音频音量(0.0 到 1.0)。
+ * @param {boolean} [isInput=false] - 是否为输入音频的可视化器。
+ */
+function updateAudioVisualizer(volume, isInput = false) {
+    const visualizer = isInput ? inputAudioVisualizer : audioVisualizer;
+    const audioBar = visualizer.querySelector('.audio-bar') || document.createElement('div');
+    
+    if (!audioBar.classList.contains('audio-bar')) {
+        audioBar.classList.add('audio-bar');
+        visualizer.appendChild(audioBar);
+    }
+    
+    audioBar.style.width = `${volume * 100}%`;
+    if (volume > 0.05) {
+        audioBar.classList.add('active');
+    } else {
+        audioBar.classList.remove('active');
     }
 }
 
 /**
- * 从文件导入聊天历史
- * @param {Event} event - 文件选择事件
+ * 如果尚未初始化，则初始化音频上下文和流传输器。
+ * @returns {Promise<AudioStreamer>} 音频流传输器实例。
  */
-function importChatHistory(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    // 显示加载状态
-    showLoading('导入历史记录中...');
-    
-    const reader = new FileReader();
-    
-    reader.onload = function(e) {
-        try {
-            const importedData = JSON.parse(e.target.result);
-            
-            // 验证导入的数据格式
-            if (!importedData.chats || !Array.isArray(importedData.chats)) {
-                throw new Error('导入的文件格式无效');
-            }
-            
-            // 确保所有必要的字段都存在
-            const validChats = importedData.chats.filter(chat => {
-                return chat && chat.id && Array.isArray(chat.messages) && 
-                       chat.messages.length > 0 && chat.title;
-            });
-            
-            // 合并历史，避免重复
-            const currentIds = new Set(chatHistory.map(chat => chat.id));
-            const newChats = validChats.filter(chat => !currentIds.has(chat.id));
-            
-            // 将新的历史添加到现有历史
-            chatHistory = [...chatHistory, ...newChats];
-            
-            // 限制保存的历史记录数量
-            if (chatHistory.length > 50) {
-                chatHistory = chatHistory.slice(-50);
-            }
-            
-            // 保存到本地存储
-            localStorage.setItem('chat_history', JSON.stringify(chatHistory));
-            
-            // 更新UI
-            updateHistoryUI();
-            
-            showNotification(`成功导入 ${newChats.length} 条对话历史`, 'success');
-        } catch (error) {
-            handleError(error, '导入历史记录失败');
-        } finally {
-            hideLoading();
-        }
-    };
-    
-    reader.onerror = function() {
-        handleError(new Error('读取文件失败'), '导入历史记录失败');
-        hideLoading();
-    };
-    
-    reader.readAsText(file);
-}
-
-/**
- * 清空所有聊天历史
- */
-function clearAllHistory() {
-    // 确认对话框
-    if (confirm('确定要清空所有历史对话吗？此操作不可撤销。')) {
-        // 清空历史数组
-        chatHistory = [];
-        
-        // 清空本地存储
-        localStorage.removeItem('chat_history');
-        
-        // 更新UI
-        updateHistoryUI();
-        
-        // 如果当前正在某个历史对话，则清空并创建新会话
-        logsContainer.innerHTML = '';
-        currentChatId = generateChatId();
-        
-        // 显示系统消息
-        logMessage('所有历史对话已清空。', 'system');
-        
-        // 显示通知
-        showNotification('所有历史对话已清空', 'info');
+async function ensureAudioInitialized() {
+    if (!audioCtx) {
+        audioCtx = new AudioContext();
     }
+    if (!audioStreamer) {
+        audioStreamer = new AudioStreamer(audioCtx);
+        await audioStreamer.addWorklet('vumeter-out', 'js/audio/worklets/vol-meter.js', (ev) => {
+            updateAudioVisualizer(ev.data.volume);
+        });
+    }
+    return audioStreamer;
 }
