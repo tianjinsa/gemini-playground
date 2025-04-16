@@ -86,13 +86,6 @@ const CONFIG = {
   RETRY_DELAY: 1000, // 毫秒
 };
 
-// 请求类型常量
-const REQUEST_TYPE = {
-  OPENAI: 'openai',
-  GEMINI: 'gemini',
-  UNKNOWN: 'unknown'
-};
-
 export default {
   async fetch (request) {
     if (request.method === "OPTIONS") {
@@ -118,11 +111,8 @@ export default {
     };
     
     try {
-      // 确定请求类型
-      const requestType = determineRequestType(request);
-      
-      // 根据请求类型获取API密钥
-      const apiKey = getApiKey(request, requestType);
+      const auth = request.headers.get("Authorization");
+      const apiKey = auth?.split(" ")[1];
       
       // 验证 API Key
       if (!apiKey) {
@@ -156,13 +146,6 @@ export default {
         }
       };
       
-      // 处理原生Gemini格式的请求
-      if (requestType === REQUEST_TYPE.GEMINI) {
-        return await withRetry(() => handleNativeGeminiRequest(request, apiKey))
-          .catch(errHandler);
-      }
-      
-      // 处理OpenAI格式的请求（现有逻辑）
       switch (true) {
         case pathname.endsWith("/chat/completions"):
           assert(request.method === "POST");
@@ -203,75 +186,6 @@ export default {
     }
   }
 };
-
-/**
- * 确定请求的类型（OpenAI或Gemini原生格式）
- * @param {Request} request - 原始请求对象
- * @returns {string} - 请求类型
- */
-function determineRequestType(request) {
-  const hasAuthHeader = request.headers.has("Authorization");
-  const hasGoogleApiKeyHeader = request.headers.has("X-Goog-Api-Key");
-  
-  // 优先判断Gemini原生格式
-  if (hasGoogleApiKeyHeader) {
-    return REQUEST_TYPE.GEMINI;
-  }
-  
-  // 其次判断OpenAI格式
-  if (hasAuthHeader) {
-    return REQUEST_TYPE.OPENAI;
-  }
-  
-  // 默认当作OpenAI格式处理（兼容现有逻辑）
-  return REQUEST_TYPE.OPENAI;
-}
-
-/**
- * 根据请求类型获取合适的API密钥
- * @param {Request} request - 原始请求对象
- * @param {string} requestType - 请求类型
- * @returns {string|null} - API密钥
- */
-function getApiKey(request, requestType) {
-  if (requestType === REQUEST_TYPE.GEMINI) {
-    return request.headers.get("X-Goog-Api-Key");
-  } else {
-    const auth = request.headers.get("Authorization");
-    return auth?.split(" ")[1]; // Bearer token格式处理
-  }
-}
-
-/**
- * 处理原生Gemini格式请求
- * @param {Request} request - 原始请求对象
- * @param {string} apiKey - Google API密钥
- * @returns {Promise<Response>} - 请求响应
- */
-async function handleNativeGeminiRequest(request, apiKey) {
-  // 从请求URL中提取目标路径
-  const url = new URL(request.url);
-  const { pathname, search } = url;
-  
-  // 构建对Google API的请求URL
-  const targetUrl = `${CONFIG.BASE_URL}${pathname}${search}`;
-  
-  // 克隆原始请求的headers和body
-  const headers = new Headers(request.headers);
-  
-  // 确保请求带上API密钥
-  headers.set("x-goog-api-key", apiKey);
-  
-  // 转发请求到Google API
-  const response = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    body: request.body,
-  });
-  
-  // 返回响应时添加CORS头
-  return new Response(response.body, fixCors(response));
-}
 
 class HttpError extends Error {
   constructor(message, status) {
