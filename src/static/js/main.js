@@ -288,6 +288,9 @@ let screenRecorder = null;
 let isUsingTool = false;
 let currentChatId = null;
 
+// 多模态客户端
+const client = new MultimodalLiveClient();
+
 /**
  * 显示加载覆盖层，带有自定义消息
  * @param {string} message - 要显示的加载消息
