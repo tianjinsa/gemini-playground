@@ -111,8 +111,21 @@ export default {
     };
     
     try {
-      const auth = request.headers.get("Authorization");
-      const apiKey = auth?.split(" ")[1];
+      // 从不同的头部获取API密钥
+      const authHeader = request.headers.get("Authorization");
+      const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
+      
+      // 优先使用X-Goog-Api-Key头部的API密钥，如果没有则从Authorization头部提取
+      let apiKey;
+      if (googleApiKeyHeader) {
+        apiKey = googleApiKeyHeader;
+      } else if (authHeader) {
+        apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
+      }
+      
+      // 检查API格式类型
+      const apiFormat = request.headers.get("X-API-Format") || "openai";
+      const isGeminiFormat = apiFormat === "gemini";
       
       // 验证 API Key
       if (!apiKey) {
@@ -126,10 +139,6 @@ export default {
       
       const { pathname } = new URL(request.url);
       
-      // 检查API格式类型
-      const apiFormat = request.headers.get("X-API-Format") || "openai";
-      const isGeminiFormat = apiFormat === "gemini";
-
       // 请求限流检查
       if (!isGeminiFormat) {
         // OpenAI格式的请求限流
@@ -224,15 +233,13 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     const headers = new Headers();
     for (const [key, value] of request.headers.entries()) {
       // 跳过一些特定的头
-      if (!['host', 'connection', 'x-api-format'].includes(key.toLowerCase())) {
+      if (!['host', 'connection', 'x-api-format', 'authorization'].includes(key.toLowerCase())) {
         headers.set(key, value);
       }
     }
     
     // 确保API密钥正确设置
-    if (apiKey) {
-      headers.set('x-goog-api-key', apiKey);
-    }
+    headers.set('x-goog-api-key', apiKey);
     
     console.log(`Forwarding request to: ${targetUrl}`);
     
@@ -255,7 +262,7 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     // 添加CORS头
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Goog-Api-Key');
     
     // 返回响应
     return new Response(responseBody, {

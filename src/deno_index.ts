@@ -85,11 +85,22 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
-    // 判断API格式类型
-    const url = new URL(req.url);
-    const isGeminiFormat = url.pathname.startsWith('/v1beta') || 
-                           url.pathname.startsWith('/v1') || 
-                           url.pathname.includes('generativelanguage');
+    // 根据请求头部判断API格式类型
+    const authHeader = req.headers.get("Authorization");
+    const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
+    
+    // 判断API格式类型：基于头部和URL路径
+    // 如果有X-Goog-Api-Key头部，则认为是Google格式的请求
+    // 如果只有Authorization头部，则根据URL路径判断
+    let isGeminiFormat = !!googleApiKeyHeader;
+    
+    // 如果没有明确的Google API Key头部，则根据URL路径进一步判断
+    if (!isGeminiFormat) {
+      const url = new URL(req.url);
+      isGeminiFormat = url.pathname.startsWith('/v1beta') || 
+                       url.pathname.startsWith('/v1') || 
+                       url.pathname.includes('generativelanguage');
+    }
 
     // 将请求转发到worker处理
     const worker = await import('./api_proxy/worker.mjs');
@@ -112,6 +123,12 @@ async function handleAPIRequest(req: Request): Promise<Response> {
       referrer: req.referrer,
       referrerPolicy: req.referrerPolicy,
       signal: req.signal,
+    });
+
+    logger.info('Handling API request', { 
+      path: new URL(req.url).pathname,
+      format: isGeminiFormat ? 'gemini' : 'openai',
+      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : 'Authorization'
     });
 
     return await worker.default.fetch(modifiedReq);
@@ -157,6 +174,11 @@ async function handleRequest(req: Request): Promise<Response> {
   
   // 支持 Google 格式的路径
   if (url.pathname.startsWith("/v1beta") || url.pathname.startsWith("/v1")) {
+    return handleAPIRequest(req);
+  }
+  
+  // 检查是否包含API密钥头部，如果有则视为API请求
+  if (req.headers.get("Authorization") || req.headers.get("X-Goog-Api-Key")) {
     return handleAPIRequest(req);
   }
 
