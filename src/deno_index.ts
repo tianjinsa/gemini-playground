@@ -85,8 +85,41 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
-    const worker = await import('./api_proxy/worker.mjs');
-    return await worker.default.fetch(req);
+    // 检查请求头，判断请求格式类型
+    const hasAuthHeader = req.headers.has("Authorization");
+    const hasGoogApiKey = req.headers.has("X-Goog-Api-Key");
+    
+    logger.info('API request received', { 
+      url: req.url, 
+      isOpenAIFormat: hasAuthHeader, 
+      isGeminiFormat: hasGoogApiKey 
+    });
+
+    // 根据规则判断请求类型
+    if (hasGoogApiKey) {
+      // 规则B: 如果包含X-Goog-Api-Key，则为Gemini格式
+      return await handleGeminiAPIRequest(req);
+    } else if (hasAuthHeader) {
+      // 规则A: 如果包含Authorization，则为OpenAI格式
+      const worker = await import('./api_proxy/worker.mjs');
+      return await worker.default.fetch(req);
+    } else {
+      // 异常情况：缺少必要的认证头
+      logger.warn('API request missing authentication headers');
+      return new Response(JSON.stringify({
+        error: "Missing authentication headers. Please provide either 'Authorization' for OpenAI format or 'X-Goog-Api-Key' for Gemini format.",
+        status: 401,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 401,
+        headers: {
+          'content-type': 'application/json;charset=UTF-8',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+        }
+      });
+    }
   } catch (error) {
     logger.error('API request error', { error, url: req.url });
     
@@ -105,6 +138,68 @@ async function handleAPIRequest(req: Request): Promise<Response> {
       status: errorStatus,
       headers: {
         'content-type': 'application/json;charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
+      }
+    });
+  }
+}
+
+// 处理原生Gemini API格式的请求
+async function handleGeminiAPIRequest(req: Request): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    const apiKey = req.headers.get("X-Goog-Api-Key");
+    
+    // 构建转发到Google Gemini API的目标URL
+    const targetUrl = `https://generativelanguage.googleapis.com${url.pathname}${url.search}`;
+    
+    logger.info('Forwarding Gemini-format request', { targetUrl });
+    
+    // 创建新的请求头，保留原始请求的所有头部
+    const headers = new Headers(req.headers);
+    
+    // 创建转发请求
+    const forwardRequest = new Request(targetUrl, {
+      method: req.method,
+      headers: headers,
+      body: req.body,
+      redirect: 'follow'
+    });
+    
+    // 发送请求到Gemini API
+    const response = await fetch(forwardRequest);
+    
+    // 处理响应
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', '*');
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders
+    });
+  } catch (error) {
+    logger.error('Gemini API request error', { error });
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStatus = (error as { status?: number }).status || 500;
+    
+    return new Response(JSON.stringify({
+      error: errorMessage,
+      status: errorStatus,
+      timestamp: new Date().toISOString(),
+      path: new URL(req.url).pathname
+    }), {
+      status: errorStatus,
+      headers: {
+        'content-type': 'application/json;charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
       }
     });
   }
