@@ -85,8 +85,36 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
+    // 判断API格式类型
+    const url = new URL(req.url);
+    const isGeminiFormat = url.pathname.startsWith('/v1beta') || 
+                           url.pathname.startsWith('/v1') || 
+                           url.pathname.includes('generativelanguage');
+
+    // 将请求转发到worker处理
     const worker = await import('./api_proxy/worker.mjs');
-    return await worker.default.fetch(req);
+    
+    // 添加API格式标记，传递给worker
+    const apiFormatHeader = new Headers(req.headers);
+    apiFormatHeader.set('X-API-Format', isGeminiFormat ? 'gemini' : 'openai');
+    
+    // 创建新的请求对象，保持原始请求的其他部分不变
+    const modifiedReq = new Request(req.url, {
+      method: req.method,
+      headers: apiFormatHeader,
+      body: req.body,
+      cache: req.cache,
+      credentials: req.credentials,
+      integrity: req.integrity,
+      keepalive: req.keepalive,
+      mode: req.mode,
+      redirect: req.redirect,
+      referrer: req.referrer,
+      referrerPolicy: req.referrerPolicy,
+      signal: req.signal,
+    });
+
+    return await worker.default.fetch(modifiedReq);
   } catch (error) {
     logger.error('API request error', { error, url: req.url });
     
@@ -119,9 +147,16 @@ async function handleRequest(req: Request): Promise<Response> {
     return handleWebSocket(req);
   }
 
+  // API 请求处理
+  // 支持 OpenAI 格式的路径
   if (url.pathname.endsWith("/chat/completions") ||
       url.pathname.endsWith("/embeddings") ||
       url.pathname.endsWith("/models")) {
+    return handleAPIRequest(req);
+  }
+  
+  // 支持 Google 格式的路径
+  if (url.pathname.startsWith("/v1beta") || url.pathname.startsWith("/v1")) {
     return handleAPIRequest(req);
   }
 

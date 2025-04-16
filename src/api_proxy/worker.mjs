@@ -126,18 +126,36 @@ export default {
       
       const { pathname } = new URL(request.url);
       
+      // 检查API格式类型
+      const apiFormat = request.headers.get("X-API-Format") || "openai";
+      const isGeminiFormat = apiFormat === "gemini";
+
       // 请求限流检查
-      switch (true) {
-        case pathname.endsWith("/chat/completions"):
+      if (!isGeminiFormat) {
+        // OpenAI格式的请求限流
+        switch (true) {
+          case pathname.endsWith("/chat/completions"):
+            if (chatCompletionLimiter.isRateLimited(clientIP)) {
+              throw new HttpError("Rate limit exceeded for chat completions", 429);
+            }
+            break;
+          case pathname.endsWith("/embeddings"):
+            if (embeddingsLimiter.isRateLimited(clientIP)) {
+              throw new HttpError("Rate limit exceeded for embeddings", 429);
+            }
+            break;
+        }
+      } else {
+        // Gemini格式的请求限流
+        if (pathname.includes("generateContent") || pathname.includes("streamGenerateContent")) {
           if (chatCompletionLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for chat completions", 429);
+            throw new HttpError("Rate limit exceeded for generate content", 429);
           }
-          break;
-        case pathname.endsWith("/embeddings"):
+        } else if (pathname.includes("embedContent")) {
           if (embeddingsLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for embeddings", 429);
+            throw new HttpError("Rate limit exceeded for embed content", 429);
           }
-          break;
+        }
       }
       
       const assert = (success, message = "Method not allowed", status = 405) => {
@@ -146,46 +164,109 @@ export default {
         }
       };
       
-      switch (true) {
-        case pathname.endsWith("/chat/completions"):
-          assert(request.method === "POST");
-          const chatCompletionBody = await request.json();
-          
-          // 内容安全检查
-          validateContentSafety(chatCompletionBody);
-          
-          return await withRetry(() => handleCompletions(chatCompletionBody, apiKey))
-            .catch(errHandler);
+      // 根据API格式处理请求
+      if (isGeminiFormat) {
+        // 处理Gemini格式的API请求
+        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+      } else {
+        // 处理OpenAI格式的API请求
+        switch (true) {
+          case pathname.endsWith("/chat/completions"):
+            assert(request.method === "POST");
+            const chatCompletionBody = await request.json();
             
-        case pathname.endsWith("/embeddings"):
-          assert(request.method === "POST");
-          const embeddingsBody = await request.json();
-          
-          // 验证输入长度，防止过大请求
-          if (Array.isArray(embeddingsBody.input)) {
-            assert(
-              embeddingsBody.input.length <= 100, 
-              "Too many input items. Maximum allowed: 100", 
-              400
-            );
-          }
-          
-          return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
-            .catch(errHandler);
+            // 内容安全检查
+            validateContentSafety(chatCompletionBody);
             
-        case pathname.endsWith("/models"):
-          assert(request.method === "GET");
-          return await withRetry(() => handleModels(apiKey))
-            .catch(errHandler);
+            return await withRetry(() => handleCompletions(chatCompletionBody, apiKey))
+              .catch(errHandler);
+              
+          case pathname.endsWith("/embeddings"):
+            assert(request.method === "POST");
+            const embeddingsBody = await request.json();
             
-        default:
-          throw new HttpError("404 Not Found", 404);
+            // 验证输入长度，防止过大请求
+            if (Array.isArray(embeddingsBody.input)) {
+              assert(
+                embeddingsBody.input.length <= 100, 
+                "Too many input items. Maximum allowed: 100", 
+                400
+              );
+            }
+            
+            return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
+              .catch(errHandler);
+              
+          case pathname.endsWith("/models"):
+            assert(request.method === "GET");
+            return await withRetry(() => handleModels(apiKey))
+              .catch(errHandler);
+              
+          default:
+            throw new HttpError("404 Not Found", 404);
+        }
       }
     } catch (err) {
       return errHandler(err);
     }
   }
 };
+
+// 处理Gemini原生格式的API请求
+async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
+  // 直接转发到Gemini API
+  try {
+    // 构建Gemini API URL
+    const url = new URL(request.url);
+    const targetUrl = `${CONFIG.BASE_URL}${url.pathname}${url.search}`;
+    
+    // 创建请求头
+    const headers = new Headers();
+    for (const [key, value] of request.headers.entries()) {
+      // 跳过一些特定的头
+      if (!['host', 'connection', 'x-api-format'].includes(key.toLowerCase())) {
+        headers.set(key, value);
+      }
+    }
+    
+    // 确保API密钥正确设置
+    if (apiKey) {
+      headers.set('x-goog-api-key', apiKey);
+    }
+    
+    console.log(`Forwarding request to: ${targetUrl}`);
+    
+    // 转发请求到Gemini API
+    const response = await fetch(targetUrl, {
+      method: request.method,
+      headers,
+      body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
+    });
+    
+    // 获取响应体
+    const responseBody = await response.arrayBuffer();
+    
+    // 创建响应头
+    const responseHeaders = new Headers();
+    for (const [key, value] of response.headers.entries()) {
+      responseHeaders.set(key, value);
+    }
+    
+    // 添加CORS头
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    // 返回响应
+    return new Response(responseBody, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    return errHandler(err);
+  }
+}
 
 class HttpError extends Error {
   constructor(message, status) {
