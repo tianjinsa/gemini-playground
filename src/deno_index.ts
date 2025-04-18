@@ -23,41 +23,82 @@ async function handleDirectOpenAIProxy(req: Request): Promise<Response> {
     const targetUrl = `https://generativelanguage.googleapis.com${url.pathname}${url.search}`;
     
     logger.info('Direct OpenAI proxy request', { targetUrl });
+
+    // 1. 提取 API 密钥
+    let apiKey: string | null = null;
+    const authHeader = req.headers.get("Authorization");
+    const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
+
+    if (googleApiKeyHeader) {
+      apiKey = googleApiKeyHeader;
+      logger.debug('Using API key from X-Goog-Api-Key header');
+    } else if (authHeader && authHeader.startsWith("Bearer ")) {
+      apiKey = authHeader.substring(7); // Remove "Bearer " prefix
+      logger.debug('Using API key from Authorization header');
+    } else if (url.searchParams.has('key')) {
+      apiKey = url.searchParams.get('key');
+      logger.debug('Using API key from URL query parameter');
+    }
+
+    if (!apiKey) {
+       logger.error('API key is missing in the request');
+       return new Response(JSON.stringify({
+         error: {
+           message: 'API key is required. Provide it in Authorization header (Bearer <key>), X-Goog-Api-Key header, or as a 'key' query parameter.',
+           status: 401,
+           code: 'UNAUTHENTICATED'
+         }
+       }), {
+         status: 401,
+         headers: {
+           'Content-Type': 'application/json',
+           'Access-Control-Allow-Origin': '*',
+         },
+       });
+    }
     
-    // 创建新的 Headers 对象，复制原始请求头
+    // 2. 创建新的 Headers 对象，复制必要的头并设置 x-goog-api-key
     const headers = new Headers();
     for (const [key, value] of req.headers.entries()) {
-      // 过滤掉一些特定的头，比如 host 等
-      if (!['host', 'connection'].includes(key.toLowerCase())) {
+      const lowerKey = key.toLowerCase();
+      // 过滤掉 host, connection, 和原始的认证头
+      if (!['host', 'connection', 'authorization', 'x-goog-api-key'].includes(lowerKey)) {
         headers.set(key, value);
       }
     }
+    // 明确设置 Google API Key 头
+    headers.set('x-goog-api-key', apiKey);
+    // 可选：添加标识客户端的头
+    // headers.set('x-goog-api-client', 'gemini-playground-proxy'); 
 
-    // 创建代理请求
+    // 3. 创建代理请求
     const proxyRequest = new Request(targetUrl, {
       method: req.method,
-      headers: headers,
+      headers: headers, // 使用处理过的 headers
       body: req.body,
       redirect: 'follow',
     });
 
-    // 发送请求到目标服务器
+    // 4. 发送请求到目标服务器
     const response = await fetch(proxyRequest);
     
     logger.info('Received proxy response', { status: response.status });
     
-    // 创建响应头
+    // 5. 创建响应头
     const responseHeaders = new Headers();
     for (const [key, value] of response.headers.entries()) {
-      responseHeaders.set(key, value);
+       // 过滤掉可能引起问题的 content-encoding
+       if (key.toLowerCase() !== 'content-encoding') {
+          responseHeaders.set(key, value);
+       }
     }
     
     // 设置 CORS 头
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Goog-Api-Key'); // 允许 X-Goog-Api-Key
     
-    // 返回响应，保持原始响应体（包括流）
+    // 6. 返回响应，保持原始响应体（包括流）
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
