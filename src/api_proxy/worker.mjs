@@ -111,11 +111,15 @@ export default {
     };
     
     try {
+      // 解析URL和路径
+      const url = new URL(request.url);
+      const { pathname, searchParams } = url;
+      
       // 从不同的头部获取API密钥
       const authHeader = request.headers.get("Authorization");
       const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
       
-      // 优先使用X-Goog-Api-Key头部的API密钥，如果没有则从Authorization头部提取
+      // 确定API密钥来源和API格式
       let apiKey;
       let isGoogleFormat = false;
       
@@ -130,10 +134,6 @@ export default {
         console.log("Detected OpenAI API format (Authorization header)");
       }
       
-      // 检查API格式类型
-      const apiFormat = request.headers.get("X-API-Format") || "openai";
-      const isGeminiFormat = apiFormat === "gemini";
-      
       // 验证 API Key
       if (!apiKey) {
         throw new HttpError("API key is required", 401);
@@ -144,48 +144,18 @@ export default {
                        request.headers.get("X-Forwarded-For")?.split(",")[0] || 
                        "unknown";
       
-      const { pathname } = new URL(request.url);
-      
-      // 请求限流检查
-      if (!isGeminiFormat) {
-        // OpenAI格式的请求限流
-        switch (true) {
-          case pathname.endsWith("/chat/completions"):
-            if (chatCompletionLimiter.isRateLimited(clientIP)) {
-              throw new HttpError("Rate limit exceeded for chat completions", 429);
-            }
-            break;
-          case pathname.endsWith("/embeddings"):
-            if (embeddingsLimiter.isRateLimited(clientIP)) {
-              throw new HttpError("Rate limit exceeded for embeddings", 429);
-            }
-            break;
-        }
-      } else {
-        // Gemini格式的请求限流
-        if (pathname.includes("generateContent") || pathname.includes("streamGenerateContent")) {
-          if (chatCompletionLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for generate content", 429);
-          }
-        } else if (pathname.includes("embedContent")) {
-          if (embeddingsLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for embed content", 429);
-          }
-        }
-      }
-      
       const assert = (success, message = "Method not allowed", status = 405) => {
         if (!success) {
           throw new HttpError(message, status);
         }
       };
       
-      // 根据API格式处理请求
-      if (isGeminiFormat) {
-        // 处理Gemini格式的API请求
+      // 基于头部判断处理方式
+      if (isGoogleFormat) {
+        // Google原生格式，直接转发请求
         return await handleGeminiRequest(request, pathname, apiKey, errHandler);
       } else {
-        // 处理OpenAI格式的API请求
+        // OpenAI格式，需要适配转换
         switch (true) {
           case pathname.endsWith("/chat/completions"):
             assert(request.method === "POST");
