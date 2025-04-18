@@ -117,15 +117,19 @@ export default {
       
       // 优先使用X-Goog-Api-Key头部的API密钥，如果没有则从Authorization头部提取
       let apiKey;
+      let isGeminiFormat = false; // 默认不是 Gemini 格式
+
       if (googleApiKeyHeader) {
         apiKey = googleApiKeyHeader;
+        isGeminiFormat = true; // 如果使用 X-Goog-Api-Key，则认为是 Gemini 格式
       } else if (authHeader) {
         apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
+        // 如果使用 Authorization，则认为是 OpenAI 格式 (isGeminiFormat 保持 false)
       }
       
-      // 检查API格式类型
-      const apiFormat = request.headers.get("X-API-Format") || "openai";
-      const isGeminiFormat = apiFormat === "gemini";
+      // 移除对 X-API-Format 的检查
+      // const apiFormat = request.headers.get("X-API-Format") || "openai";
+      // const isGeminiFormat = apiFormat === "gemini";
       
       // 验证 API Key
       if (!apiKey) {
@@ -138,7 +142,7 @@ export default {
                        "unknown";
       
       const { pathname } = new URL(request.url);
-      
+
       // 请求限流检查
       if (!isGeminiFormat) {
         // OpenAI格式的请求限流
@@ -206,7 +210,7 @@ export default {
             return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
               .catch(errHandler);
               
-          case pathname.endsWith("/models"):
+          case pathname.endsWith("/models"): // OpenAI 格式允许访问 /models
             assert(request.method === "GET");
             return await withRetry(() => handleModels(apiKey))
               .catch(errHandler);
