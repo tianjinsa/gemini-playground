@@ -111,25 +111,18 @@ export default {
     };
     
     try {
-      // 从不同的头部获取API密钥
+      // 从不同的头部获取API密钥，并根据 X-API-Format 或 X-Goog-Api-Key 判断 Gemini 格式
       const authHeader = request.headers.get("Authorization");
       const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
-      
-      // 优先使用X-Goog-Api-Key头部的API密钥，如果没有则从Authorization头部提取
+      const apiFormat = request.headers.get("X-API-Format");
       let apiKey;
-      let isGeminiFormat = false; // 默认不是 Gemini 格式
-
+      // 只有 X-Goog-Api-Key 或 X-API-Format=gemini 时才识别为 Gemini 格式
+      const isGeminiFormat = !!googleApiKeyHeader || apiFormat === "gemini";
       if (googleApiKeyHeader) {
         apiKey = googleApiKeyHeader;
-        isGeminiFormat = true; // 如果使用 X-Goog-Api-Key，则认为是 Gemini 格式
       } else if (authHeader) {
         apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
-        // 如果使用 Authorization，则认为是 OpenAI 格式 (isGeminiFormat 保持 false)
       }
-      
-      // 移除对 X-API-Format 的检查
-      // const apiFormat = request.headers.get("X-API-Format") || "openai";
-      // const isGeminiFormat = apiFormat === "gemini";
       
       // 验证 API Key
       if (!apiKey) {
@@ -234,16 +227,14 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     // 构建Gemini API URL
     const url = new URL(request.url);
     let finalPathname = pathname;
-    const apiVersionPath = `/${API_VERSION}/`;
-
-    // 检查 pathname 是否以 /v1beta/ 开头
-    if (!pathname.startsWith(apiVersionPath)) {
-      // 如果不包含，则添加 API 版本号
-      // 同时确保路径以 / 开头，避免 //
-      finalPathname = `${apiVersionPath}${pathname.startsWith('/') ? pathname.substring(1) : pathname}`;
+    // 处理 API 版本路径：如果请求路径不以 /v1beta/ 或 /v1/ 开头，则添加默认版本
+    const versionPattern = /^\/v(1beta|1)\//;
+    if (!versionPattern.test(pathname)) {
+      // 如果不包含版本前缀，则添加默认 API_VERSION
+      finalPathname = `/${API_VERSION}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
       console.log(`Prepending API version. Original pathname: ${pathname}, New pathname: ${finalPathname}`);
     } else {
-        console.log(`Pathname already includes API version: ${pathname}`);
+      console.log(`Pathname already includes API version: ${pathname}`);
     }
 
 
@@ -275,18 +266,18 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     console.log(`Forwarding Gemini request to: ${targetUrl}`);
     console.log(`Forwarding headers:`, [...headers.entries()]); // Log headers
 
-    // 转发请求到Gemini API
-    const geminiResponse = await fetch(targetUrl, {
-      method: request.method,
-      headers,
-      body: request.body, // 直接传递请求体流
-      duplex: 'half' // 需要为包含请求体的 fetch 指定 duplex
-    });
+    // 构建 fetch 选项，仅在非 GET/HEAD 请求中包含 body 和 duplex
+    const fetchOptions = { method: request.method, headers };
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      fetchOptions.body = request.body;
+      fetchOptions.duplex = 'half';
+    }
+    const geminiResponse = await fetch(targetUrl, fetchOptions);
 
     console.log(`Received Gemini response status: ${geminiResponse.status}`);
 
     // 创建响应头
-    const responseHeaders = new Headers();
+    let responseHeaders = new Headers();
     for (const [key, value] of geminiResponse.headers.entries()) {
        // 过滤掉 content-encoding，因为 Cloudflare Worker 会自动处理
        if (key.toLowerCase() !== 'content-encoding') {
@@ -295,7 +286,8 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     }
 
     // 添加CORS头
-    fixCors({ headers: responseHeaders }); // 修改传入的 headers 对象
+    // 更新 CORS 头到响应头
+    responseHeaders = fixCors({ headers: responseHeaders }).headers;
 
     // 返回响应，直接流式传输响应体
     return new Response(geminiResponse.body, {
