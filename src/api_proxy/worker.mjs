@@ -179,15 +179,9 @@ export default {
       
       // 根据API格式处理请求
       if (isGeminiFormat) {
-        // 处理Gemini格式的API请求
-        if (pathname.endsWith('/models') && request.method === 'GET') {
-          // Gemini 格式的模型列表请求，使用特定处理函数确保路径正确
-          return await withRetry(() => handleGeminiModels(apiKey))
-            .catch(errHandler);
-        } else {
-          // 其他 Gemini 格式请求，使用通用转发
-          return await handleGeminiRequest(request, pathname, apiKey, errHandler);
-        }
+        // 所有 Gemini 格式请求，使用通用转发
+        // handleGeminiRequest 内部会处理 API 版本路径
+        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
       } else {
         // 处理OpenAI格式的API请求
         switch (true) {
@@ -239,52 +233,78 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
   try {
     // 构建Gemini API URL
     const url = new URL(request.url);
-    const targetUrl = `${CONFIG.BASE_URL}${url.pathname}${url.search}`;
-    
+    let finalPathname = pathname;
+    const apiVersionPath = `/${API_VERSION}/`;
+
+    // 检查 pathname 是否以 /v1beta/ 开头
+    if (!pathname.startsWith(apiVersionPath)) {
+      // 如果不包含，则添加 API 版本号
+      // 同时确保路径以 / 开头，避免 //
+      finalPathname = `${apiVersionPath}${pathname.startsWith('/') ? pathname.substring(1) : pathname}`;
+      console.log(`Prepending API version. Original pathname: ${pathname}, New pathname: ${finalPathname}`);
+    } else {
+        console.log(`Pathname already includes API version: ${pathname}`);
+    }
+
+
+    const targetUrl = `${CONFIG.BASE_URL}${finalPathname}${url.search}`;
+
     // 创建请求头
     const headers = new Headers();
     for (const [key, value] of request.headers.entries()) {
       // 跳过一些特定的头
-      if (!['host', 'connection', 'x-api-format', 'authorization'].includes(key.toLowerCase())) {
-        headers.set(key, value);
+      if (!['host', 'connection', 'content-length', 'content-type'].includes(key.toLowerCase())) {
+         // 保留 content-type 和 content-length (如果存在)
+         // 移除 x-api-format 和 authorization (因为我们用 x-goog-api-key)
+         if (!['x-api-format', 'authorization'].includes(key.toLowerCase())) {
+            headers.set(key, value);
+         }
       }
     }
-    
+     // 显式设置 Content-Type (如果原始请求中有)
+     if (request.headers.has('content-type')) {
+        headers.set('content-type', request.headers.get('content-type'));
+     }
+
+
     // 确保API密钥正确设置
     headers.set('x-goog-api-key', apiKey);
     // 添加 x-goog-api-client 头
     headers.set('x-goog-api-client', API_CLIENT);
-    
-    console.log(`Forwarding request to: ${targetUrl}`);
-    
+
+    console.log(`Forwarding Gemini request to: ${targetUrl}`);
+    console.log(`Forwarding headers:`, [...headers.entries()]); // Log headers
+
     // 转发请求到Gemini API
-    const response = await fetch(targetUrl, {
+    const geminiResponse = await fetch(targetUrl, {
       method: request.method,
       headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
+      body: request.body, // 直接传递请求体流
+      duplex: 'half' // 需要为包含请求体的 fetch 指定 duplex
     });
-    
-    // 获取响应体
-    const responseBody = await response.arrayBuffer();
-    
+
+    console.log(`Received Gemini response status: ${geminiResponse.status}`);
+
     // 创建响应头
     const responseHeaders = new Headers();
-    for (const [key, value] of response.headers.entries()) {
-      responseHeaders.set(key, value);
+    for (const [key, value] of geminiResponse.headers.entries()) {
+       // 过滤掉 content-encoding，因为 Cloudflare Worker 会自动处理
+       if (key.toLowerCase() !== 'content-encoding') {
+          responseHeaders.set(key, value);
+       }
     }
-    
+
     // 添加CORS头
-    responseHeaders.set('Access-Control-Allow-Origin', '*');
-    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Goog-Api-Key');
-    
-    // 返回响应
-    return new Response(responseBody, {
-      status: response.status,
-      statusText: response.statusText,
+    fixCors({ headers: responseHeaders }); // 修改传入的 headers 对象
+
+    // 返回响应，直接流式传输响应体
+    return new Response(geminiResponse.body, {
+      status: geminiResponse.status,
+      statusText: geminiResponse.statusText,
       headers: responseHeaders,
     });
   } catch (err) {
+     console.error("Error in handleGeminiRequest:", err);
     return errHandler(err);
   }
 }
@@ -364,48 +384,6 @@ const measurePerformance = async (name, fn) => {
     console.info(`Performance: ${name} took ${duration.toFixed(2)}ms`);
   }
 };
-
-// 新增：专门处理 Gemini 格式的模型列表请求
-async function handleGeminiModels(apiKey) {
-  return await measurePerformance('handleGeminiModels', async () => {
-    const cacheKey = 'gemini_models'; // Use a different cache key
-    const cachedResponse = modelsCache.get(cacheKey);
-    if (cachedResponse) {
-      // Return raw cached response with CORS
-      const headers = new Headers({ 'Content-Type': 'application/json' });
-      return new Response(cachedResponse, fixCors({
-        status: 200,
-        headers: headers
-      }));
-    }
-
-    const url = `${BASE_URL}/${API_VERSION}/models`;
-    console.log(`Fetching Gemini models from: ${url}`); // Log the URL being fetched
-
-    const response = await fetch(url, {
-      headers: makeHeaders(apiKey),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Gemini Models API error: ${response.status} ${errorText}`); // Log error details
-      throw new HttpError(`Gemini Models API error: ${response.status} ${errorText}`, response.status);
-    }
-
-    const responseBody = await response.text(); // Get raw response body
-
-    // Cache the raw response body
-    modelsCache.set(cacheKey, responseBody);
-
-    // Return the raw response with CORS headers
-    const responseHeaders = new Headers(response.headers); // Clone original headers
-    return new Response(responseBody, fixCors({
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders // Use original headers + CORS
-    }));
-  });
-}
 
 // 重命名原来的 handleModels 以明确其用于 OpenAI 格式转换
 async function handleOpenAIModels (apiKey) {
