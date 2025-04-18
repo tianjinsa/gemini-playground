@@ -175,6 +175,10 @@ export default {
       
       // 根据API格式处理请求
       if (isGeminiFormat) {
+        // 支持Gemini格式获取模型列表
+        if (pathname.endsWith("/models") && request.method === "GET") {
+          return await withRetry(() => handleModels(apiKey));
+        }
         // 处理Gemini格式的API请求
         return await handleGeminiRequest(request, pathname, apiKey, errHandler);
       } else {
