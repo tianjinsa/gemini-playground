@@ -115,11 +115,22 @@ export default {
       const authHeader = request.headers.get("Authorization");
       const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
       const apiFormat = request.headers.get("X-API-Format");
+      const url = new URL(request.url);
       let apiKey;
+      
       // 只有 X-Goog-Api-Key 或 X-API-Format=gemini 时才识别为 Gemini 格式
-      const isGeminiFormat = !!googleApiKeyHeader || apiFormat === "gemini";
+      // 或者路径以 /v1beta 或 /v1 开头
+      const isGeminiFormat = !!googleApiKeyHeader || 
+                             apiFormat === "gemini" || 
+                             url.pathname.startsWith('/v1beta') || 
+                             url.pathname.startsWith('/v1');
+
       if (googleApiKeyHeader) {
         apiKey = googleApiKeyHeader;
+      } else if (isGeminiFormat && url.searchParams.has('key')) {
+        // 如果是 Gemini 格式且 URL 查询参数中有 key，则优先使用它
+        apiKey = url.searchParams.get('key');
+        console.log('Using API key from query parameter for Gemini format.');
       } else if (authHeader) {
         apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
       }
@@ -174,7 +185,7 @@ export default {
       if (isGeminiFormat) {
         // 所有 Gemini 格式请求，使用通用转发
         // handleGeminiRequest 内部会处理 API 版本路径
-        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+        return await handleGeminiRequest(request, url, apiKey, errHandler); // Pass URL object
       } else {
         // 处理OpenAI格式的API请求
         switch (true) {
@@ -221,35 +232,32 @@ export default {
 };
 
 // 处理Gemini原生格式的API请求
-async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
+// Modify handleGeminiRequest to accept URL object
+async function handleGeminiRequest(request, url, apiKey, errHandler) {
   // 直接转发到Gemini API
   try {
     // 构建Gemini API URL
-    const url = new URL(request.url);
-    let finalPathname = pathname;
-    // 处理 API 版本路径：如果请求路径不以 /v1beta/ 或 /v1/ 开头，则添加默认版本
-    const versionPattern = /^\/v(1beta|1)\//;
-    if (!versionPattern.test(pathname)) {
-      // 如果不包含版本前缀，则添加默认 API_VERSION
-      finalPathname = `/${API_VERSION}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
-      console.log(`Prepending API version. Original pathname: ${pathname}, New pathname: ${finalPathname}`);
-    } else {
-      console.log(`Pathname already includes API version: ${pathname}`);
-    }
+    // let finalPathname = url.pathname; // Use pathname from URL object
+    // // 处理 API 版本路径：如果请求路径不以 /v1beta/ 或 /v1/ 开头，则添加默认版本
+    // const versionPattern = /^\/v(1beta|1)\//;
+    // if (!versionPattern.test(finalPathname)) {
+    //   // 如果不包含版本前缀，则添加默认 API_VERSION
+    //   finalPathname = `/${API_VERSION}${finalPathname.startsWith('/') ? finalPathname : `/${finalPathname}`}`;
+    //   console.log(`Prepending API version. Original pathname: ${url.pathname}, New pathname: ${finalPathname}`);
+    // } else {
+    //   console.log(`Pathname already includes API version: ${url.pathname}`);
+    // }
 
-
-    const targetUrl = `${CONFIG.BASE_URL}${finalPathname}${url.search}`;
+    // 直接使用原始请求的 URL 路径和查询参数，因为 Deno 已经处理了格式判断
+    const targetUrl = `${CONFIG.BASE_URL}${url.pathname}${url.search}`;
 
     // 创建请求头
     const headers = new Headers();
     for (const [key, value] of request.headers.entries()) {
-      // 跳过一些特定的头
-      if (!['host', 'connection', 'content-length', 'content-type'].includes(key.toLowerCase())) {
-         // 保留 content-type 和 content-length (如果存在)
-         // 移除 x-api-format 和 authorization (因为我们用 x-goog-api-key)
-         if (!['x-api-format', 'authorization'].includes(key.toLowerCase())) {
-            headers.set(key, value);
-         }
+      // 跳过一些特定的头，特别是 host 和可能导致问题的头
+      const lowerKey = key.toLowerCase();
+      if (!['host', 'connection', 'content-length', 'content-type', 'authorization', 'x-api-format', 'x-goog-api-key'].includes(lowerKey)) {
+         headers.set(key, value);
       }
     }
      // 显式设置 Content-Type (如果原始请求中有)
@@ -257,20 +265,23 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
         headers.set('content-type', request.headers.get('content-type'));
      }
 
-
-    // 确保API密钥正确设置
+    // 确保API密钥正确设置 (使用 x-goog-api-key)
+    // 注意：即使原始请求使用 ?key=...，转发到 Google API 时也应该用 x-goog-api-key 头
     headers.set('x-goog-api-key', apiKey);
     // 添加 x-goog-api-client 头
     headers.set('x-goog-api-client', API_CLIENT);
 
     console.log(`Forwarding Gemini request to: ${targetUrl}`);
-    console.log(`Forwarding headers:`, [...headers.entries()]); // Log headers
+    console.log(`Forwarding headers (using x-goog-api-key):`, [...headers.entries()]); // Log headers
 
     // 构建 fetch 选项，仅在非 GET/HEAD 请求中包含 body 和 duplex
     const fetchOptions = { method: request.method, headers };
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       fetchOptions.body = request.body;
-      fetchOptions.duplex = 'half';
+      // 对于 Cloudflare Workers，可能需要 'half' duplex
+      // 对于 Deno Deploy 或其他环境，可能不需要或需要不同设置
+      // 暂时移除 duplex，让 fetch 自动处理
+      // fetchOptions.duplex = 'half'; 
     }
     const geminiResponse = await fetch(targetUrl, fetchOptions);
 
@@ -286,7 +297,6 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     }
 
     // 添加CORS头
-    // 更新 CORS 头到响应头
     responseHeaders = fixCors({ headers: responseHeaders }).headers;
 
     // 返回响应，直接流式传输响应体
