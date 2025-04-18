@@ -92,7 +92,6 @@ export default {
       return handleOPTIONS();
     }
     
-    // 改进的错误处理
     const errHandler = (err) => {
       console.error(`Error: ${err.message || 'Unknown error'}`, err.stack || '');
       const status = err.status || 500;
@@ -111,30 +110,20 @@ export default {
     };
     
     try {
-      // 解析URL和路径
       const url = new URL(request.url);
-      const { pathname, searchParams } = url;
-      
-      // 从不同的头部获取API密钥
+      const { pathname } = url;
+
+      // 从不同的头部获取API密钥 (保持不变)
       const authHeader = request.headers.get("Authorization");
       const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
-      
-      // 确定API密钥来源和API格式
       let apiKey;
-      let isGoogleFormat = false;
-      
       if (googleApiKeyHeader) {
-        // 如果包含 X-Goog-Api-Key 头部，则为 Google 格式
         apiKey = googleApiKeyHeader;
-        isGoogleFormat = true;
-        console.log("Detected Google API format (X-Goog-Api-Key header)");
       } else if (authHeader) {
-        // 如果包含 Authorization 头部，则为 OpenAI 格式
         apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
-        console.log("Detected OpenAI API format (Authorization header)");
       }
       
-      // 验证 API Key
+      // 验证 API Key (保持不变)
       if (!apiKey) {
         throw new HttpError("API key is required", 401);
       }
@@ -143,35 +132,60 @@ export default {
       const clientIP = request.headers.get("CF-Connecting-IP") || 
                        request.headers.get("X-Forwarded-For")?.split(",")[0] || 
                        "unknown";
-      
-      const assert = (success, message = "Method not allowed", status = 405) => {
-        if (!success) {
-          throw new HttpError(message, status);
+
+      // --- 请求路由逻辑修改 --- 
+      // 通过路径判断是 Google 原生格式还是 OpenAI 兼容格式
+      if (pathname.startsWith('/v1/') || pathname.startsWith('/v1beta/')) {
+        console.log(`[Routing] Detected Google API path: ${pathname}. Routing to handleGeminiRequest.`);
+        // 认为是 Google 原生 API 调用，直接代理
+        // 限流检查 (可以根据需要为 Google 路径添加)
+        if (pathname.includes("generateContent") || pathname.includes("streamGenerateContent")) {
+          if (chatCompletionLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for generate content", 429);
+          }
+        } else if (pathname.includes("embedContent") || pathname.includes("batchEmbedContents")) {
+          if (embeddingsLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for embed content", 429);
+          }
         }
-      };
-      
-      // 基于头部判断处理方式
-      if (isGoogleFormat) {
-        // Google原生格式，直接转发请求
+        // 调用通用代理函数
         return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+
       } else {
-        // OpenAI格式，需要适配转换
+        console.log(`[Routing] Detected OpenAI-compatible path: ${pathname}. Routing to OpenAI handlers.`);
+        // 否则，认为是 OpenAI 兼容 API 调用
+        const assert = (success, message = "Method not allowed", status = 405) => {
+          if (!success) {
+            throw new HttpError(message, status);
+          }
+        };
+
+        // OpenAI 格式的请求限流检查 (保持不变)
+        switch (true) {
+          case pathname.endsWith("/chat/completions"):
+            if (chatCompletionLimiter.isRateLimited(clientIP)) {
+              throw new HttpError("Rate limit exceeded for chat completions", 429);
+            }
+            break;
+          case pathname.endsWith("/embeddings"):
+            if (embeddingsLimiter.isRateLimited(clientIP)) {
+              throw new HttpError("Rate limit exceeded for embeddings", 429);
+            }
+            break;
+        }
+
+        // 处理 OpenAI 兼容路径
         switch (true) {
           case pathname.endsWith("/chat/completions"):
             assert(request.method === "POST");
             const chatCompletionBody = await request.json();
-            
-            // 内容安全检查
             validateContentSafety(chatCompletionBody);
-            
             return await withRetry(() => handleCompletions(chatCompletionBody, apiKey))
               .catch(errHandler);
               
           case pathname.endsWith("/embeddings"):
             assert(request.method === "POST");
             const embeddingsBody = await request.json();
-            
-            // 验证输入长度，防止过大请求
             if (Array.isArray(embeddingsBody.input)) {
               assert(
                 embeddingsBody.input.length <= 128, 
@@ -179,17 +193,18 @@ export default {
                 400
               );
             }
-            
             return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
               .catch(errHandler);
               
           case pathname.endsWith("/models"):
+            // 这个 /models 仍然是处理 OpenAI 格式的模型列表请求
             assert(request.method === "GET");
             return await withRetry(() => handleModels(apiKey))
               .catch(errHandler);
               
           default:
-            throw new HttpError("404 Not Found", 404);
+            // 对于无法识别的非 /v1beta 路径，返回 404
+            throw new HttpError(`Not Found: The path ${pathname} is not recognized.`, 404);
         }
       }
     } catch (err) {
@@ -775,207 +790,5 @@ function validateContentSafety(body) {
         }
       }
     }
-  }
-}
-
-// 处理原始代理请求 (?raw=true)
-async function handleRawProxy(request, pathname, apiKey, errHandler) {
-  try {
-    // 提取API路径
-    const googlePath = pathname.replace(/^\/v\d+(\.\d+)?/, ''); // 移除版本前缀如 /v1
-    
-    // 构建目标URL
-    const url = new URL(request.url);
-    let targetUrl = `${CONFIG.BASE_URL}/${CONFIG.API_VERSION}${googlePath}`;
-    
-    // 复制查询参数
-    for (const [key, value] of url.searchParams.entries()) {
-      if (key !== 'raw') { // 不复制raw参数
-        const separator = targetUrl.includes('?') ? '&' : '?';
-        targetUrl += `${separator}${key}=${encodeURIComponent(value)}`;
-      }
-    }
-    
-    console.log(`[Raw Proxy] Forwarding to: ${targetUrl}`);
-    
-    // 检查是否为流式请求
-    const isStream = pathname.includes("streamGenerateContent");
-    if (isStream && !targetUrl.includes("alt=sse")) {
-      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "alt=sse";
-    }
-    
-    // 创建请求头
-    const headers = new Headers();
-    for (const [key, value] of request.headers.entries()) {
-      // 排除特定的头部
-      const lowerKey = key.toLowerCase();
-      if (!['host', 'connection', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 
-             'cf-visitor', 'x-forwarded-proto', 'x-forwarded-for', 'x-real-ip'].includes(lowerKey)) {
-        headers.set(key, value);
-      }
-    }
-    
-    // 确保设置API密钥
-    headers.set('x-goog-api-key', apiKey);
-    
-    // 转发请求
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
-      redirect: 'follow'
-    });
-    
-    // 如果响应不成功，记录错误
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Raw Proxy] Error: ${response.status} ${errorText}`);
-      return new Response(errorText, fixCors({
-        status: response.status,
-        statusText: response.statusText
-      }));
-    }
-    
-    // 处理流式响应
-    if (isStream) {
-      const responseHeaders = new Headers({
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-      
-      // 添加CORS头
-      fixCorsHeaders(responseHeaders);
-      
-      // 直接返回流
-      return new Response(response.body, {
-        headers: responseHeaders,
-        status: response.status,
-        statusText: response.statusText
-      });
-    }
-    
-    // 处理常规响应
-    const responseHeaders = new Headers();
-    for (const [key, value] of response.headers.entries()) {
-      responseHeaders.set(key, value);
-    }
-    
-    // 添加CORS头
-    fixCorsHeaders(responseHeaders);
-    
-    // 返回响应
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders
-    });
-  } catch (err) {
-    console.error(`[Raw Proxy] Exception: ${err.message}`, err.stack);
-    return errHandler(err instanceof HttpError ? err : new HttpError('Raw proxy error', 500));
-  }
-}
-
-// 处理直接代理请求 (/direct/...)
-async function handleDirectProxy(request, pathname, apiKey, errHandler) {
-  try {
-    // 提取API路径，移除 /direct/ 前缀
-    let googlePath = pathname.replace(/^\/direct\//, '');
-    
-    // 构建目标URL
-    let targetUrl;
-    if (googlePath.startsWith("v1beta/")) {
-      // 路径已包含版本号
-      googlePath = googlePath.replace(/^v1beta\//, '');
-      targetUrl = `${CONFIG.BASE_URL}/v1beta/${googlePath}`;
-    } else {
-      // 路径不包含版本号
-      targetUrl = `${CONFIG.BASE_URL}/${CONFIG.API_VERSION}/${googlePath}`;
-    }
-    
-    // 复制查询参数
-    const url = new URL(request.url);
-    for (const [key, value] of url.searchParams.entries()) {
-      const separator = targetUrl.includes('?') ? '&' : '?';
-      targetUrl += `${separator}${key}=${encodeURIComponent(value)}`;
-    }
-    
-    console.log(`[Direct Proxy] Forwarding to: ${targetUrl}`);
-    
-    // 检查是否为流式请求
-    const isStream = googlePath.includes("streamGenerateContent");
-    if (isStream && !targetUrl.includes("alt=sse")) {
-      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "alt=sse";
-    }
-    
-    // 创建请求头
-    const headers = new Headers();
-    for (const [key, value] of request.headers.entries()) {
-      // 排除特定的头部
-      const lowerKey = key.toLowerCase();
-      if (!['host', 'connection', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 
-             'cf-visitor', 'x-forwarded-proto', 'x-forwarded-for', 'x-real-ip'].includes(lowerKey)) {
-        headers.set(key, value);
-      }
-    }
-    
-    // 确保设置API密钥
-    headers.set('x-goog-api-key', apiKey);
-    
-    // 转发请求
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
-      redirect: 'follow'
-    });
-    
-    // 如果响应不成功，记录错误
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Direct Proxy] Error: ${response.status} ${errorText}`);
-      return new Response(errorText, fixCors({
-        status: response.status,
-        statusText: response.statusText
-      }));
-    }
-    
-    // 处理流式响应
-    if (isStream) {
-      const responseHeaders = new Headers({
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-      
-      // 添加CORS头
-      fixCorsHeaders(responseHeaders);
-      
-      // 直接返回流
-      return new Response(response.body, {
-        headers: responseHeaders,
-        status: response.status,
-        statusText: response.statusText
-      });
-    }
-    
-    // 处理常规响应
-    const responseHeaders = new Headers();
-    for (const [key, value] of response.headers.entries()) {
-      responseHeaders.set(key, value);
-    }
-    
-    // 添加CORS头
-    fixCorsHeaders(responseHeaders);
-    
-    // 返回响应
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders
-    });
-  } catch (err) {
-    console.error(`[Direct Proxy] Exception: ${err.message}`, err.stack);
-    return errHandler(err instanceof HttpError ? err : new HttpError('Direct proxy error', 500));
   }
 }
