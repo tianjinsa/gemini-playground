@@ -224,74 +224,58 @@ export default {
 // 处理Gemini原生格式的API请求
 async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
   try {
-    // 特殊处理获取模型列表的请求
-    if (pathname.endsWith('/models') && request.method === 'GET') {
-      // 直接调用Google API获取模型列表，不进行格式转换
-      const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.API_VERSION}/models`, {
-        headers: makeHeaders(apiKey),
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new HttpError(`Models API error: ${response.status} ${errorText}`, response.status);
-      }
-      
-      // 直接返回原始响应，不转换为OpenAI格式
-      const responseBody = await response.text();
-      
-      return new Response(responseBody, fixCors({
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }));
-    }
-    
-    // 构建Gemini API URL
+    // 构建目标 Google API URL
+    // 假设 pathname 已经是正确的 Google API 路径，例如 /v1beta/models
     const url = new URL(request.url);
-    const targetUrl = `${CONFIG.BASE_URL}${url.pathname}${url.search}`;
-    
-    // 创建请求头
+    const targetUrl = `${CONFIG.BASE_URL}${pathname}${url.search}`;
+
+    console.log(`[Gemini Format] Forwarding request to: ${targetUrl}`);
+
+    // 创建请求头，复制必要的原始请求头
     const headers = new Headers();
     for (const [key, value] of request.headers.entries()) {
-      // 跳过一些特定的头
-      if (!['host', 'connection', 'x-api-format', 'authorization'].includes(key.toLowerCase())) {
+      // 排除一些 Cloudflare Worker 或代理可能添加的、不应转发的头
+      const lowerKey = key.toLowerCase();
+      if (!['host', 'connection', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 'cf-visitor', 'x-forwarded-proto', 'x-forwarded-for', 'x-real-ip', 'x-api-format', 'authorization'].includes(lowerKey)) {
         headers.set(key, value);
       }
     }
-    
-    // 确保API密钥正确设置
+
+    // 确保设置 Google API Key
     headers.set('x-goog-api-key', apiKey);
-    
-    console.log(`Forwarding request to: ${targetUrl}`);
-    
-    // 转发请求到Gemini API
+    // 确保 Content-Type 被正确设置 (如果原始请求中有)
+    if (request.headers.has('content-type')) {
+        headers.set('content-type', request.headers.get('content-type'));
+    }
+
+
+    // 转发请求到 Google API
     const response = await fetch(targetUrl, {
       method: request.method,
-      headers,
+      headers: headers, // 使用处理过的 headers
       body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
+      redirect: 'follow' // 允许跟随重定向
     });
-    
-    // 获取响应体
-    const responseBody = await response.arrayBuffer();
-    
-    // 创建响应头
+
+    // 创建响应头，复制 Google API 的响应头
     const responseHeaders = new Headers();
     for (const [key, value] of response.headers.entries()) {
       responseHeaders.set(key, value);
     }
-    
-    // 添加CORS头
-    responseHeaders.set('Access-Control-Allow-Origin', '*');
-    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Goog-Api-Key');
-    
-    // 返回响应
-    return new Response(responseBody, {
+
+    // 添加必要的 CORS 头
+    fixCorsHeaders(responseHeaders); // 使用辅助函数添加 CORS 头
+
+    // 返回从 Google API 收到的原始响应体和处理过的响应头
+    return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
     });
+
   } catch (err) {
-    return errHandler(err);
+    console.error(`[Gemini Format] Error handling request: ${err.message}`, err.stack);
+    return errHandler(err instanceof HttpError ? err : new HttpError('Failed to forward Gemini request', 500));
   }
 }
 
@@ -328,24 +312,26 @@ async function withRetry(fn, attempts = CONFIG.RETRY_ATTEMPTS) {
   throw lastError;
 }
 
+// 辅助函数，用于设置 CORS 头
+function fixCorsHeaders(headers) {
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"); // 允许更多方法
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Goog-Api-Key, X-API-Format, *"); // 允许更多头部
+  headers.set("Access-Control-Max-Age", "86400"); // 24小时
+}
+
 const fixCors = ({ headers, status, statusText }) => {
   headers = new Headers(headers);
-  headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  headers.set("Access-Control-Max-Age", "86400"); // 24小时
+  fixCorsHeaders(headers); // 使用辅助函数
   return { headers, status, statusText };
 };
 
 const handleOPTIONS = async () => {
+  const headers = new Headers();
+  fixCorsHeaders(headers); // 使用辅助函数
   return new Response(null, {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
-      "Access-Control-Max-Age": "86400",
-    },
-    status: 204 // 使用正确的 No Content 状态码
+    headers: headers,
+    status: 204 // No Content
   });
 };
 
