@@ -15,6 +15,72 @@ const logger = {
   error: (message: string, data?: any) => logger.log('error', message, data),
 };
 
+// 处理直接代理到 /v1beta/openai 的请求
+async function handleDirectOpenAIProxy(req: Request): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    // 构建目标 URL
+    const targetUrl = `https://generativelanguage.googleapis.com${url.pathname}${url.search}`;
+    
+    logger.info('Direct OpenAI proxy request', { targetUrl });
+    
+    // 创建新的 Headers 对象，复制原始请求头
+    const headers = new Headers();
+    for (const [key, value] of req.headers.entries()) {
+      // 过滤掉一些特定的头，比如 host 等
+      if (!['host', 'connection'].includes(key.toLowerCase())) {
+        headers.set(key, value);
+      }
+    }
+
+    // 创建代理请求
+    const proxyRequest = new Request(targetUrl, {
+      method: req.method,
+      headers: headers,
+      body: req.body,
+      redirect: 'follow',
+    });
+
+    // 发送请求到目标服务器
+    const response = await fetch(proxyRequest);
+    
+    logger.info('Received proxy response', { status: response.status });
+    
+    // 创建响应头
+    const responseHeaders = new Headers();
+    for (const [key, value] of response.headers.entries()) {
+      responseHeaders.set(key, value);
+    }
+    
+    // 设置 CORS 头
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    // 返回响应，保持原始响应体（包括流）
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    logger.error('Direct OpenAI proxy error', { error });
+    return new Response(JSON.stringify({
+      error: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        status: 500,
+        timestamp: new Date().toISOString(),
+      }
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+}
+
 const getContentType = (path: string): string => {
   const ext = path.split('.').pop()?.toLowerCase() || '';
   const types: Record<string, string> = {
@@ -177,6 +243,11 @@ async function handleRequest(req: Request): Promise<Response> {
   // 检查是否包含API密钥头部，如果有则视为API请求
   if (req.headers.get("Authorization") || req.headers.get("X-Goog-Api-Key")) {
     return handleAPIRequest(req);
+  }
+
+  // 处理直接代理到 /v1beta/openai 的请求
+  if (url.pathname.startsWith("/v1beta/openai")) {
+    return handleDirectOpenAIProxy(req);
   }
 
   // 静态文件处理
