@@ -92,7 +92,6 @@ export default {
       return handleOPTIONS();
     }
     
-    // 改进的错误处理
     const errHandler = (err) => {
       console.error(`Error: ${err.message || 'Unknown error'}`, err.stack || '');
       const status = err.status || 500;
@@ -111,11 +110,12 @@ export default {
     };
     
     try {
-      // 从不同的头部获取API密钥
+      const url = new URL(request.url);
+      const { pathname } = url;
+
+      // 从不同的头部获取API密钥 (保持不变)
       const authHeader = request.headers.get("Authorization");
       const googleApiKeyHeader = request.headers.get("X-Goog-Api-Key");
-      
-      // 优先使用X-Goog-Api-Key头部的API密钥，如果没有则从Authorization头部提取
       let apiKey;
       if (googleApiKeyHeader) {
         apiKey = googleApiKeyHeader;
@@ -123,11 +123,7 @@ export default {
         apiKey = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
       }
       
-      // 检查API格式类型
-      const apiFormat = request.headers.get("X-API-Format") || "openai";
-      const isGeminiFormat = apiFormat === "gemini";
-      
-      // 验证 API Key
+      // 验证 API Key (保持不变)
       if (!apiKey) {
         throw new HttpError("API key is required", 401);
       }
@@ -136,12 +132,35 @@ export default {
       const clientIP = request.headers.get("CF-Connecting-IP") || 
                        request.headers.get("X-Forwarded-For")?.split(",")[0] || 
                        "unknown";
-      
-      const { pathname } = new URL(request.url);
-      
-      // 请求限流检查
-      if (!isGeminiFormat) {
-        // OpenAI格式的请求限流
+
+      // --- 请求路由逻辑修改 --- 
+      // 通过路径判断是 Google 原生格式还是 OpenAI 兼容格式
+      if (pathname.startsWith('/v1/') || pathname.startsWith('/v1beta/')) {
+        console.log(`[Routing] Detected Google API path: ${pathname}. Routing to handleGeminiRequest.`);
+        // 认为是 Google 原生 API 调用，直接代理
+        // 限流检查 (可以根据需要为 Google 路径添加)
+        if (pathname.includes("generateContent") || pathname.includes("streamGenerateContent")) {
+          if (chatCompletionLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for generate content", 429);
+          }
+        } else if (pathname.includes("embedContent") || pathname.includes("batchEmbedContents")) {
+          if (embeddingsLimiter.isRateLimited(clientIP)) {
+            throw new HttpError("Rate limit exceeded for embed content", 429);
+          }
+        }
+        // 调用通用代理函数
+        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+
+      } else {
+        console.log(`[Routing] Detected OpenAI-compatible path: ${pathname}. Routing to OpenAI handlers.`);
+        // 否则，认为是 OpenAI 兼容 API 调用
+        const assert = (success, message = "Method not allowed", status = 405) => {
+          if (!success) {
+            throw new HttpError(message, status);
+          }
+        };
+
+        // OpenAI 格式的请求限流检查 (保持不变)
         switch (true) {
           case pathname.endsWith("/chat/completions"):
             if (chatCompletionLimiter.isRateLimited(clientIP)) {
@@ -154,47 +173,19 @@ export default {
             }
             break;
         }
-      } else {
-        // Gemini格式的请求限流
-        if (pathname.includes("generateContent") || pathname.includes("streamGenerateContent")) {
-          if (chatCompletionLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for generate content", 429);
-          }
-        } else if (pathname.includes("embedContent")) {
-          if (embeddingsLimiter.isRateLimited(clientIP)) {
-            throw new HttpError("Rate limit exceeded for embed content", 429);
-          }
-        }
-      }
-      
-      const assert = (success, message = "Method not allowed", status = 405) => {
-        if (!success) {
-          throw new HttpError(message, status);
-        }
-      };
-      
-      // 根据API格式处理请求
-      if (isGeminiFormat) {
-        // 处理Gemini格式的API请求
-        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
-      } else {
-        // 处理OpenAI格式的API请求
+
+        // 处理 OpenAI 兼容路径
         switch (true) {
           case pathname.endsWith("/chat/completions"):
             assert(request.method === "POST");
             const chatCompletionBody = await request.json();
-            
-            // 内容安全检查
             validateContentSafety(chatCompletionBody);
-            
             return await withRetry(() => handleCompletions(chatCompletionBody, apiKey))
               .catch(errHandler);
               
           case pathname.endsWith("/embeddings"):
             assert(request.method === "POST");
             const embeddingsBody = await request.json();
-            
-            // 验证输入长度，防止过大请求
             if (Array.isArray(embeddingsBody.input)) {
               assert(
                 embeddingsBody.input.length <= 128, 
@@ -202,17 +193,18 @@ export default {
                 400
               );
             }
-            
             return await withRetry(() => handleEmbeddings(embeddingsBody, apiKey))
               .catch(errHandler);
               
           case pathname.endsWith("/models"):
+            // 这个 /models 仍然是处理 OpenAI 格式的模型列表请求
             assert(request.method === "GET");
             return await withRetry(() => handleModels(apiKey))
               .catch(errHandler);
               
           default:
-            throw new HttpError("404 Not Found", 404);
+            // 对于无法识别的非 /v1beta 路径，返回 404
+            throw new HttpError(`Not Found: The path ${pathname} is not recognized.`, 404);
         }
       }
     } catch (err) {
