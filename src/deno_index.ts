@@ -92,23 +92,10 @@ async function handleAPIRequest(req: Request): Promise<Response> {
     const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
     const url = new URL(req.url); // 获取 URL 以检查路径
 
-    // 判断API格式类型
-    let isGeminiFormat = false;
-    if (googleApiKeyHeader) {
-      // 明确的 Google API Key 头部表示 Gemini 格式
-      isGeminiFormat = true;
-    } else if (url.pathname.startsWith('/v1beta') || url.pathname.startsWith('/v1') || url.pathname.includes('generativelanguage')) {
-      // 路径明确表示 Google 格式
-      isGeminiFormat = true;
-    } else if (url.pathname.endsWith('/models') && authHeader) {
-      // 如果是 /models 端点且有 Authorization 头 (但无 X-Goog-Api-Key),
-      // 基于用户期望 Google 格式的上下文，假定为 Gemini 格式。
-      isGeminiFormat = true;
-      logger.warn('Assuming Gemini format for /models request with Authorization header based on user context.');
-    } else {
-      // 其他情况默认为 OpenAI 格式
-      isGeminiFormat = false;
-    }
+    // 判断API格式类型: 优先检查 Google Key Header 或 Google 特定路径
+    const isGeminiFormat = !!googleApiKeyHeader || 
+                           url.pathname.startsWith('/v1beta') || 
+                           url.pathname.startsWith('/v1');
 
     // 将请求转发到worker处理
     const worker = await import('./api_proxy/worker.mjs');
@@ -136,7 +123,7 @@ async function handleAPIRequest(req: Request): Promise<Response> {
     logger.info('Handling API request', {
       path: url.pathname,
       format: isGeminiFormat ? 'gemini' : 'openai',
-      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : (authHeader ? 'Authorization' : 'None') // 改进日志记录
+      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : (authHeader ? 'Authorization' : (url.searchParams.has('key') ? 'Query Key' : 'None')) // 改进日志记录
     });
 
     return await worker.default.fetch(modifiedReq);
