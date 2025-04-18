@@ -180,7 +180,14 @@ export default {
       // 根据API格式处理请求
       if (isGeminiFormat) {
         // 处理Gemini格式的API请求
-        return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+        if (pathname.endsWith('/models') && request.method === 'GET') {
+          // Gemini 格式的模型列表请求，使用特定处理函数确保路径正确
+          return await withRetry(() => handleGeminiModels(apiKey))
+            .catch(errHandler);
+        } else {
+          // 其他 Gemini 格式请求，使用通用转发
+          return await handleGeminiRequest(request, pathname, apiKey, errHandler);
+        }
       } else {
         // 处理OpenAI格式的API请求
         switch (true) {
@@ -212,7 +219,8 @@ export default {
               
           case pathname.endsWith("/models"): // OpenAI 格式允许访问 /models
             assert(request.method === "GET");
-            return await withRetry(() => handleModels(apiKey))
+            // OpenAI 格式的模型列表请求，进行格式转换
+            return await withRetry(() => handleOpenAIModels(apiKey)) // Renamed from handleModels
               .catch(errHandler);
               
           default:
@@ -357,9 +365,52 @@ const measurePerformance = async (name, fn) => {
   }
 };
 
-async function handleModels (apiKey) {
-  return await measurePerformance('handleModels', async () => {
-    const cacheKey = 'models';
+// 新增：专门处理 Gemini 格式的模型列表请求
+async function handleGeminiModels(apiKey) {
+  return await measurePerformance('handleGeminiModels', async () => {
+    const cacheKey = 'gemini_models'; // Use a different cache key
+    const cachedResponse = modelsCache.get(cacheKey);
+    if (cachedResponse) {
+      // Return raw cached response with CORS
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      return new Response(cachedResponse, fixCors({
+        status: 200,
+        headers: headers
+      }));
+    }
+
+    const url = `${BASE_URL}/${API_VERSION}/models`;
+    console.log(`Fetching Gemini models from: ${url}`); // Log the URL being fetched
+
+    const response = await fetch(url, {
+      headers: makeHeaders(apiKey),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini Models API error: ${response.status} ${errorText}`); // Log error details
+      throw new HttpError(`Gemini Models API error: ${response.status} ${errorText}`, response.status);
+    }
+
+    const responseBody = await response.text(); // Get raw response body
+
+    // Cache the raw response body
+    modelsCache.set(cacheKey, responseBody);
+
+    // Return the raw response with CORS headers
+    const responseHeaders = new Headers(response.headers); // Clone original headers
+    return new Response(responseBody, fixCors({
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders // Use original headers + CORS
+    }));
+  });
+}
+
+// 重命名原来的 handleModels 以明确其用于 OpenAI 格式转换
+async function handleOpenAIModels (apiKey) {
+  return await measurePerformance('handleOpenAIModels', async () => {
+    const cacheKey = 'openai_models'; // Use a different cache key for OpenAI format
     const cachedResponse = modelsCache.get(cacheKey);
     if (cachedResponse) {
       return new Response(cachedResponse, fixCors({
@@ -368,29 +419,33 @@ async function handleModels (apiKey) {
       }));
     }
 
-    const response = await fetch(`${BASE_URL}/${API_VERSION}/models`, {
+    const url = `${BASE_URL}/${API_VERSION}/models`; // Fetch from the correct Gemini endpoint
+    console.log(`Fetching models for OpenAI format from: ${url}`);
+
+    const response = await fetch(url, {
       headers: makeHeaders(apiKey),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`Models API error (for OpenAI format): ${response.status} ${errorText}`);
       throw new HttpError(`Models API error: ${response.status} ${errorText}`, response.status);
     }
-    
-    let { body } = response;
+
+    // Transform to OpenAI format
     const { models } = JSON.parse(await response.text());
-    body = JSON.stringify({
+    const body = JSON.stringify({
       object: "list",
       data: models.map(({ name }) => ({
         id: name.replace("models/", ""),
         object: "model",
-        created: Date.now(),
+        created: Date.now(), // Consider using a fixed timestamp or fetching creation time if available
         owned_by: "google",
       })),
     }, null, "  ");
-    
-    modelsCache.set(cacheKey, body);
-    
+
+    modelsCache.set(cacheKey, body); // Cache the transformed OpenAI format response
+
     return new Response(body, fixCors({
       status: 200,
       headers: { 'Content-Type': 'application/json' }
