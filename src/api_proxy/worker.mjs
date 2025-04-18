@@ -226,8 +226,23 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
   try {
     // 特殊处理获取模型列表的请求
     if (pathname.endsWith('/models') && request.method === 'GET') {
-      return await withRetry(() => handleModels(apiKey))
-        .catch(errHandler);
+      // 直接调用Google API获取模型列表，不进行格式转换
+      const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.API_VERSION}/models`, {
+        headers: makeHeaders(apiKey),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpError(`Models API error: ${response.status} ${errorText}`, response.status);
+      }
+      
+      // 直接返回原始响应，不转换为OpenAI格式
+      const responseBody = await response.text();
+      
+      return new Response(responseBody, fixCors({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
     }
     
     // 构建Gemini API URL
