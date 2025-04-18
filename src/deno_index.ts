@@ -1,3 +1,5 @@
+/// <reference types="https://deno.land/x/deno/runtime/mod.ts" />
+
 // 添加一个结构化日志工具
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -85,30 +87,36 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
-    // 根据请求头部判断API格式类型
+    // 根据请求头部和路径判断API格式类型
     const authHeader = req.headers.get("Authorization");
     const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
-    
-    // 判断API格式类型：基于头部和URL路径
-    // 如果有X-Goog-Api-Key头部，则认为是Google格式的请求
-    // 如果只有Authorization头部，则根据URL路径判断
-    let isGeminiFormat = !!googleApiKeyHeader;
-    
-    // 如果没有明确的Google API Key头部，则根据URL路径进一步判断
-    if (!isGeminiFormat) {
-      const url = new URL(req.url);
-      isGeminiFormat = url.pathname.startsWith('/v1beta') || 
-                       url.pathname.startsWith('/v1') || 
-                       url.pathname.includes('generativelanguage');
+    const url = new URL(req.url); // 获取 URL 以检查路径
+
+    // 判断API格式类型
+    let isGeminiFormat = false;
+    if (googleApiKeyHeader) {
+      // 明确的 Google API Key 头部表示 Gemini 格式
+      isGeminiFormat = true;
+    } else if (url.pathname.startsWith('/v1beta') || url.pathname.startsWith('/v1') || url.pathname.includes('generativelanguage')) {
+      // 路径明确表示 Google 格式
+      isGeminiFormat = true;
+    } else if (url.pathname.endsWith('/models') && authHeader) {
+      // 如果是 /models 端点且有 Authorization 头 (但无 X-Goog-Api-Key),
+      // 基于用户期望 Google 格式的上下文，假定为 Gemini 格式。
+      isGeminiFormat = true;
+      logger.warn('Assuming Gemini format for /models request with Authorization header based on user context.');
+    } else {
+      // 其他情况默认为 OpenAI 格式
+      isGeminiFormat = false;
     }
 
     // 将请求转发到worker处理
     const worker = await import('./api_proxy/worker.mjs');
-    
+
     // 添加API格式标记，传递给worker
     const apiFormatHeader = new Headers(req.headers);
     apiFormatHeader.set('X-API-Format', isGeminiFormat ? 'gemini' : 'openai');
-    
+
     // 创建新的请求对象，保持原始请求的其他部分不变
     const modifiedReq = new Request(req.url, {
       method: req.method,
@@ -125,27 +133,29 @@ async function handleAPIRequest(req: Request): Promise<Response> {
       signal: req.signal,
     });
 
-    logger.info('Handling API request', { 
-      path: new URL(req.url).pathname,
+    logger.info('Handling API request', {
+      path: url.pathname,
       format: isGeminiFormat ? 'gemini' : 'openai',
-      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : 'Authorization'
+      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : (authHeader ? 'Authorization' : 'None') // 改进日志记录
     });
 
     return await worker.default.fetch(modifiedReq);
   } catch (error) {
     logger.error('API request error', { error, url: req.url });
-    
+
     // 增强的错误信息
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const errorStack = error instanceof Error ? error.stack : undefined;
-    const errorStatus = (error as { status?: number }).status || 500;
-    
+    // 尝试从错误对象中获取状态码，否则默认为 500
+    const errorStatus = (error as any).status || 500; // 使用 any 类型断言以访问 status
+
     return new Response(JSON.stringify({
       error: errorMessage,
       status: errorStatus,
       timestamp: new Date().toISOString(),
       path: new URL(req.url).pathname,
-      stack: process.env.NODE_ENV !== 'production' ? errorStack : undefined
+      // 在非生产环境中包含堆栈跟踪
+      stack: Deno.env.get('NODE_ENV') !== 'production' ? errorStack : undefined
     }), {
       status: errorStatus,
       headers: {
