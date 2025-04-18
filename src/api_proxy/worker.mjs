@@ -175,9 +175,10 @@ export default {
       
       // 根据API格式处理请求
       if (isGeminiFormat) {
-        // 支持Gemini格式获取模型列表
         if (pathname.endsWith("/models") && request.method === "GET") {
-          return await withRetry(() => handleModels(apiKey));
+          // Google 原生格式直接转发并返回原始模型列表
+          return await withRetry(() => handleGoogleModels(request, apiKey))
+            .catch(errHandler);
         }
         // 处理Gemini格式的API请求
         return await handleGeminiRequest(request, pathname, apiKey, errHandler);
@@ -799,4 +800,21 @@ function validateContentSafety(body) {
       }
     }
   }
+}
+
+// 新增 Google 原生模型列表获取
+async function handleGoogleModels(request, apiKey) {
+  // 直接调用 Google Generative Language API 的 models 列表端点
+  const url = `${BASE_URL}/${API_VERSION}/models`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: makeHeaders(apiKey)
+  });
+  // 读取原始响应文本
+  const body = await response.text();
+  // 返回原始 JSON，附带 CORS
+  return new Response(body, fixCors({
+    status: response.status,
+    headers: { 'Content-Type': 'application/json' }
+  }));
 }
