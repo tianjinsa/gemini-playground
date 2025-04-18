@@ -244,6 +244,8 @@ async function handleGeminiRequest(request, pathname, apiKey, errHandler) {
     
     // 确保API密钥正确设置
     headers.set('x-goog-api-key', apiKey);
+    // 添加 x-goog-api-client 头
+    headers.set('x-goog-api-client', API_CLIENT);
     
     console.log(`Forwarding request to: ${targetUrl}`);
     
