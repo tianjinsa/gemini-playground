@@ -768,7 +768,6 @@ client.on('content', (data) => {
                 
                 const messageText = document.createElement('span');
                 messageText.classList.add('message-text');
-                messageText.textContent = '';
                 currentAiResponse.appendChild(messageText);
                 
                 logsContainer.appendChild(currentAiResponse);
@@ -784,7 +783,17 @@ client.on('content', (data) => {
             // 更新文本内容
             currentResponseText += text;
             const messageText = currentAiResponse.querySelector('.message-text');
-            messageText.textContent = currentResponseText;
+            
+            // 使用marked解析Markdown，并确保换行正确显示
+            try {
+                // 解析Markdown并设置为HTML
+                messageText.innerHTML = marked.parse(currentResponseText);
+            } catch (error) {
+                // 如果解析失败，回退到原始文本显示
+                console.error('Markdown解析失败:', error);
+                // 保留换行符
+                messageText.innerHTML = currentResponseText.replace(/\n/g, '<br>');
+            }
         }
     }
 });

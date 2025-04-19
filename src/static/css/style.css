@@ -451,6 +451,57 @@ button:focus, input:focus, select:focus, textarea:focus {
     margin-right: var(--spacing-sm);
 }
 
+/* Markdown样式 */
+.log-entry.ai .message-text {
+    white-space: pre-wrap;
+}
+
+.log-entry.ai .message-text pre {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 10px 0;
+}
+
+.log-entry.ai .message-text code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.log-entry.ai .message-text blockquote {
+    border-left: 4px solid rgba(0, 0, 0, 0.2);
+    margin-left: 0;
+    padding-left: 10px;
+}
+
+.log-entry.ai .message-text ul, 
+.log-entry.ai .message-text ol {
+    padding-left: 20px;
+}
+
+.log-entry.ai .message-text h1,
+.log-entry.ai .message-text h2,
+.log-entry.ai .message-text h3,
+.log-entry.ai .message-text h4,
+.log-entry.ai .message-text h5,
+.log-entry.ai .message-text h6 {
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+/* 深色主题下的Markdown样式调整 */
+[data-theme="dark"] .log-entry.ai .message-text pre,
+[data-theme="dark"] .log-entry.ai .message-text code {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .log-entry.ai .message-text blockquote {
+    border-left-color: rgba(255, 255, 255, 0.2);
+}
+
 /* ===== Input Container Styles ===== */
 .input-container {
     display: flex;
