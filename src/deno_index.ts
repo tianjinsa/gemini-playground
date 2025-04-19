@@ -87,25 +87,67 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
-    // 根据请求头部和路径判断API格式类型
+    // 获取请求信息
+    const url = new URL(req.url); 
     const authHeader = req.headers.get("Authorization");
     const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
-    const url = new URL(req.url); // 获取 URL 以检查路径
 
-    // 判断API格式类型: 优先检查 Google Key Header 或 Google 特定路径
-    const isGeminiFormat = !!googleApiKeyHeader || 
-                           url.pathname.startsWith('/v1beta') || 
-                           url.pathname.startsWith('/v1');
+    // 准备转发URL和路径逻辑
+    let targetUrl: string;
+    const googleApiBaseUrl = "generativelanguage.googleapis.com";
+    
+    // 1. 检查是否为 OpenAI 格式请求: 路径包含 /v1beta/openai/ 或者有 Authorization 头部
+    const isOpenAIFormat = url.pathname.includes("/v1beta/openai/") || !!authHeader;
+    
+    if (isOpenAIFormat) {
+      // 针对 OpenAI 格式，处理路径，确保以 /v1beta/openai/ 开头
+      let targetPath = url.pathname;
+      
+      // 移除所有可能的 /v1beta/openai/ 前缀，防止重复
+      targetPath = targetPath.replace(/^\/v1beta\/openai\//, "");
+      targetPath = targetPath.replace(/^\/openai\//, "");
+      targetPath = targetPath.replace(/^\/v1beta\//, "");
+      
+      // 重新添加正确的前缀
+      targetPath = `/v1beta/openai/${targetPath}`;
+      
+      // 构建完整目标URL
+      targetUrl = `https://${googleApiBaseUrl}${targetPath}${url.search}`;
+      
+      logger.info('OpenAI格式请求', { 
+        originalPath: url.pathname, 
+        targetPath: targetPath,
+        targetUrl: targetUrl
+      });
+    } else {
+      // 2. 其他情况: 使用 Gemini 原生格式
+      let targetPath = url.pathname;
+      
+      // 移除可能的 /v1beta/ 前缀，防止重复
+      targetPath = targetPath.replace(/^\/v1beta\//, "");
+      
+      // 重新添加正确的前缀
+      targetPath = `/v1beta/${targetPath}`;
+      
+      // 构建完整目标URL
+      targetUrl = `https://${googleApiBaseUrl}${targetPath}${url.search}`;
+      
+      logger.info('Gemini原生格式请求', { 
+        originalPath: url.pathname, 
+        targetPath: targetPath,
+        targetUrl: targetUrl
+      });
+    }
 
     // 将请求转发到worker处理
     const worker = await import('./api_proxy/worker.mjs');
 
     // 添加API格式标记，传递给worker
     const apiFormatHeader = new Headers(req.headers);
-    apiFormatHeader.set('X-API-Format', isGeminiFormat ? 'gemini' : 'openai');
-
-    // 创建新的请求对象，保持原始请求的其他部分不变
-    const modifiedReq = new Request(req.url, {
+    apiFormatHeader.set('X-API-FORMAT', isOpenAIFormat ? 'openai' : 'gemini');
+    
+    // 创建修改后的请求对象
+    const modifiedReq = new Request(targetUrl, {
       method: req.method,
       headers: apiFormatHeader,
       body: req.body,
@@ -120,28 +162,21 @@ async function handleAPIRequest(req: Request): Promise<Response> {
       signal: req.signal,
     });
 
-    logger.info('Handling API request', {
-      path: url.pathname,
-      format: isGeminiFormat ? 'gemini' : 'openai',
-      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : (authHeader ? 'Authorization' : (url.searchParams.has('key') ? 'Query Key' : 'None')) // 改进日志记录
-    });
-
+    // 转发请求给worker处理
     return await worker.default.fetch(modifiedReq);
   } catch (error) {
-    logger.error('API request error', { error, url: req.url });
+    logger.error('API请求错误', { error, url: req.url });
 
     // 增强的错误信息
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const errorStack = error instanceof Error ? error.stack : undefined;
-    // 尝试从错误对象中获取状态码，否则默认为 500
-    const errorStatus = (error as any).status || 500; // 使用 any 类型断言以访问 status
+    const errorStatus = (error as any).status || 500;
 
     return new Response(JSON.stringify({
       error: errorMessage,
       status: errorStatus,
       timestamp: new Date().toISOString(),
       path: new URL(req.url).pathname,
-      // 在非生产环境中包含堆栈跟踪
       stack: Deno.env.get('NODE_ENV') !== 'production' ? errorStack : undefined
     }), {
       status: errorStatus,
