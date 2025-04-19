@@ -1,6 +1,4 @@
 /// <reference types="https://deno.land/x/deno/runtime/mod.ts" />
-// @ts-nocheck
-// 直接使用 Deno.serve 提供 HTTP 服务
 
 // 添加一个结构化日志工具
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -89,24 +87,27 @@ async function handleWebSocket(req: Request): Promise<Response> {
 // 改进错误处理的API请求函数
 async function handleAPIRequest(req: Request): Promise<Response> {
   try {
-    const url = new URL(req.url);
-    const path = url.pathname;
+    // 根据请求头部和路径判断API格式类型
     const authHeader = req.headers.get("Authorization");
-    const isOpenAI = path.startsWith('/v1beta/openai/') || !!authHeader;
-    // 计算 suffix，确保剥离 '/v1beta/openai' 或 '/v1beta' 前缀
-    let suffix = path;
-    if (path.startsWith('/v1beta/openai')) {
-      suffix = path.substring('/v1beta/openai'.length);
-    } else if (path.startsWith('/v1beta')) {
-      suffix = path.substring('/v1beta'.length);
-    }
-    const prefix = isOpenAI ? '/v1beta/openai' : '/v1beta';
-    const targetPath = prefix + suffix;
-    const targetUrl = `https://generativelanguage.googleapis.com${targetPath}${url.search}`;
-    logger.info('Proxy API request', { targetUrl });
-    const modifiedReq = new Request(targetUrl, {
+    const googleApiKeyHeader = req.headers.get("X-Goog-Api-Key");
+    const url = new URL(req.url); // 获取 URL 以检查路径
+
+    // 判断API格式类型: 优先检查 Google Key Header 或 Google 特定路径
+    const isGeminiFormat = !!googleApiKeyHeader || 
+                           url.pathname.startsWith('/v1beta') || 
+                           url.pathname.startsWith('/v1');
+
+    // 将请求转发到worker处理
+    const worker = await import('./api_proxy/worker.mjs');
+
+    // 添加API格式标记，传递给worker
+    const apiFormatHeader = new Headers(req.headers);
+    apiFormatHeader.set('X-API-Format', isGeminiFormat ? 'gemini' : 'openai');
+
+    // 创建新的请求对象，保持原始请求的其他部分不变
+    const modifiedReq = new Request(req.url, {
       method: req.method,
-      headers: new Headers(req.headers),
+      headers: apiFormatHeader,
       body: req.body,
       cache: req.cache,
       credentials: req.credentials,
@@ -118,12 +119,36 @@ async function handleAPIRequest(req: Request): Promise<Response> {
       referrerPolicy: req.referrerPolicy,
       signal: req.signal,
     });
-    return await fetch(modifiedReq);
+
+    logger.info('Handling API request', {
+      path: url.pathname,
+      format: isGeminiFormat ? 'gemini' : 'openai',
+      authType: googleApiKeyHeader ? 'X-Goog-Api-Key' : (authHeader ? 'Authorization' : (url.searchParams.has('key') ? 'Query Key' : 'None')) // 改进日志记录
+    });
+
+    return await worker.default.fetch(modifiedReq);
   } catch (error) {
-    logger.error('API request error', { error });
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = (error as any).status || 500;
-    return new Response(JSON.stringify({ error: message, status }), { status, headers: { 'content-type': 'application/json;charset=UTF-8' } });
+    logger.error('API request error', { error, url: req.url });
+
+    // 增强的错误信息
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    // 尝试从错误对象中获取状态码，否则默认为 500
+    const errorStatus = (error as any).status || 500; // 使用 any 类型断言以访问 status
+
+    return new Response(JSON.stringify({
+      error: errorMessage,
+      status: errorStatus,
+      timestamp: new Date().toISOString(),
+      path: new URL(req.url).pathname,
+      // 在非生产环境中包含堆栈跟踪
+      stack: Deno.env.get('NODE_ENV') !== 'production' ? errorStack : undefined
+    }), {
+      status: errorStatus,
+      headers: {
+        'content-type': 'application/json;charset=UTF-8',
+      }
+    });
   }
 }
 
@@ -136,8 +161,21 @@ async function handleRequest(req: Request): Promise<Response> {
     return handleWebSocket(req);
   }
 
-  // API 请求处理：匹配 /v1beta/* 或带 Authorization/APiKey 头部的请求
-  if (url.pathname.startsWith('/v1beta') || req.headers.get('Authorization') || req.headers.get('X-Goog-Api-Key')) {
+  // API 请求处理
+  // 支持 OpenAI 格式的路径
+  if (url.pathname.endsWith("/chat/completions") ||
+      url.pathname.endsWith("/embeddings") ||
+      url.pathname.endsWith("/models")) {
+    return handleAPIRequest(req);
+  }
+  
+  // 支持 Google 格式的路径
+  if (url.pathname.startsWith("/v1beta") || url.pathname.startsWith("/v1")) {
+    return handleAPIRequest(req);
+  }
+  
+  // 检查是否包含API密钥头部，如果有则视为API请求
+  if (req.headers.get("Authorization") || req.headers.get("X-Goog-Api-Key")) {
     return handleAPIRequest(req);
   }
 

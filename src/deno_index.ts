@@ -188,13 +188,14 @@ async function handleRequest(req: Request): Promise<Response> {
 
     const fullPath = `${Deno.cwd()}/src/static${filePath}`;
 
-    const file = await Deno.readFile(fullPath);
     const contentType = getContentType(filePath);
-
-    return new Response(file, {
-      headers: {
-        'content-type': `${contentType};charset=UTF-8`,
-      },
+    // 使用流式读取文件，避免一次性加载大文件
+    const file = await Deno.open(fullPath, { read: true });
+    const headers = new Headers();
+    headers.set('content-type', `${contentType};charset=UTF-8`);
+    return new Response(file.readable, {
+      status: 200,
+      headers,
     });
   } catch (e) {
     logger.error('Static file request error', { error: e, url: req.url });
