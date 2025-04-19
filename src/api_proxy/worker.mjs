@@ -419,7 +419,6 @@ async function handleOpenAIModels (apiKey) {
       data: models.map(({ name }) => ({
         id: name.replace("models/", ""),
         object: "model",
-        created: Date.now(), // Consider using a fixed timestamp or fetching creation time if available
         owned_by: "google",
       })),
     }, null, "  ");
