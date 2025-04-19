@@ -275,21 +275,20 @@ async function handleGeminiRequest(request, url, apiKey, errHandler) {
     // 创建请求头
     const headers = new Headers();
     for (const [key, value] of request.headers.entries()) {
-      // 跳过一些特定的头，特别是 host 和可能导致问题的头
       const lowerKey = key.toLowerCase();
-      if (!['host', 'connection', 'content-length', 'authorization', 'x-api-format', 'x-goog-api-key'].includes(lowerKey)) {
+      // 跳过 host、connection、content-length、x-api-format，不跳过 authorization
+      if (!['host', 'connection', 'content-length', 'x-api-format'].includes(lowerKey)) {
         headers.set(key, value);
       }
     }
     
-    // 显式设置 Content-Type (如果原始请求中有)
-    if (request.headers.has('content-type')) {
-      headers.set('content-type', request.headers.get('content-type'));
+    // 如果原始请求有 X-Goog-Api-Key，则使用 API Key；否则如果有 Authorization，则保留原始 Authorization
+    if (request.headers.get('X-Goog-Api-Key')) {
+      headers.set('x-goog-api-key', request.headers.get('X-Goog-Api-Key'));
+    } else if (request.headers.get('Authorization')) {
+      headers.set('Authorization', request.headers.get('Authorization'));
     }
 
-    // 确保API密钥正确设置
-    headers.set('x-goog-api-key', apiKey);
-    
     // 添加 x-goog-api-client 头
     headers.set('x-goog-api-client', API_CLIENT);
 
