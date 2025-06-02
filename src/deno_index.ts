@@ -2,6 +2,10 @@
 // @ts-nocheck
 // 直接使用 Deno.serve 提供 HTTP 服务
 
+// 限速配置常量
+const RATE_LIMIT_MAX_REQUESTS = 10; // 每个时间窗口最大请求数
+const RATE_LIMIT_WINDOW_MS = 60000; // 时间窗口（毫秒），60000ms = 1分钟
+
 // 添加一个结构化日志工具
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -16,6 +20,46 @@ const logger = {
   warn: (message: string, data?: any) => logger.log('warn', message, data),
   error: (message: string, data?: any) => logger.log('error', message, data),
 };
+
+// 添加限速功能
+class RateLimiter {
+  private requests: Map<string, number[]> = new Map();
+  private readonly maxRequests: number;
+  private readonly windowMs: number;
+
+  constructor(maxRequests: number = 20, windowMs: number = 60000) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+  }
+
+  isAllowed(clientId: string): boolean {
+    const now = Date.now();
+    const requests = this.requests.get(clientId) || [];
+    
+    // 清理过期的请求记录
+    const validRequests = requests.filter(time => now - time < this.windowMs);
+    
+    // 检查是否超过限制
+    if (validRequests.length >= this.maxRequests) {
+      this.requests.set(clientId, validRequests);
+      return false;
+    }
+    
+    // 添加当前请求
+    validRequests.push(now);
+    this.requests.set(clientId, validRequests);
+    return true;
+  }
+
+  getRemainingRequests(clientId: string): number {
+    const now = Date.now();
+    const requests = this.requests.get(clientId) || [];
+    const validRequests = requests.filter(time => now - time < this.windowMs);
+    return Math.max(0, this.maxRequests - validRequests.length);
+  }
+}
+
+const rateLimiter = new RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS);
 
 const getContentType = (path: string): string => {
   const ext = path.split('.').pop()?.toLowerCase() || '';
@@ -136,11 +180,23 @@ async function handleRequest(req: Request): Promise<Response> {
     return handleWebSocket(req);
   }
 
+  // 限速处理
+  const clientIP = getClientIP(req);
+  if (!rateLimiter.isAllowed(clientIP)) {
+    const retryAfter = Math.ceil(rateLimiter.getRemainingRequests(clientIP) / 20);
+    return new Response(JSON.stringify({ error: 'Too Many Requests', status: 429 }), { 
+      status: 429,
+      headers: {
+        'content-type': 'application/json;charset=UTF-8',
+        'Retry-After': retryAfter.toString(),
+      }
+    });
+  }
+
   // API 请求处理：匹配 /v1beta/* 或带 Authorization/APiKey 头部的请求
   if (url.pathname.startsWith('/v1beta') || req.headers.get('Authorization') || req.headers.get('X-Goog-Api-Key')) {
     return handleAPIRequest(req);
   }
-
   // 静态文件处理
   try {
     let filePath = url.pathname;
@@ -167,6 +223,20 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     });
   }
+}
+
+// 获取客户端IP地址
+function getClientIP(req: Request): string {
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  const realIP = req.headers.get('x-real-ip');
+  if (realIP) {
+    return realIP;
+  }
+  // 如果无法获取真实IP，使用URL作为标识符
+  return req.url;
 }
 
 Deno.serve(handleRequest);
