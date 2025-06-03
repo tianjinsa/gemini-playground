@@ -266,6 +266,7 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // 限速处理
+  const clientIP = getClientIP(req);
   if (!rateLimiter.isAllowed(clientIP)) {
     const retryAfter = Math.ceil(rateLimiter.getRemainingRequests(clientIP) / 20);
     return new Response(JSON.stringify({ error: 'Too Many Requests', status: 429 }), { 
