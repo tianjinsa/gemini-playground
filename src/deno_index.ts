@@ -59,67 +59,7 @@ class RateLimiter {
   }
 }
 
-// 添加IP黑名单功能
-class IPBlacklist {
-  private blacklist: Map<string, { count: number, expiresAt: number }> = new Map();
-  private suspiciousAttempts: Map<string, number> = new Map();
-  private readonly suspiciousThreshold: number;
-  private readonly banDurationMs: number;
-
-  constructor(suspiciousThreshold: number = 3, banDurationMs: number = 3600000) { // 默认3次可疑请求后封禁1小时
-    this.suspiciousThreshold = suspiciousThreshold;
-    this.banDurationMs = banDurationMs;
-  }
-
-  // 记录可疑请求
-  recordSuspiciousAttempt(ip: string): void {
-    const count = (this.suspiciousAttempts.get(ip) || 0) + 1;
-    this.suspiciousAttempts.set(ip, count);
-    
-    if (count >= this.suspiciousThreshold) {
-      this.blacklist.set(ip, { 
-        count, 
-        expiresAt: Date.now() + this.banDurationMs 
-      });
-      this.suspiciousAttempts.delete(ip);
-      logger.warn(`IP ${ip} has been blacklisted after ${count} suspicious attempts`);
-    }
-  }
-
-  // 检查IP是否被封禁
-  isBlacklisted(ip: string): boolean {
-    const now = Date.now();
-    const entry = this.blacklist.get(ip);
-    
-    if (!entry) return false;
-    
-    if (now > entry.expiresAt) {
-      // 封禁到期，移除黑名单
-      this.blacklist.delete(ip);
-      return false;
-    }
-    
-    return true;
-  }
-
-  // 清理过期的黑名单记录
-  cleanupExpired(): void {
-    const now = Date.now();
-    for (const [ip, entry] of this.blacklist.entries()) {
-      if (now > entry.expiresAt) {
-        this.blacklist.delete(ip);
-      }
-    }
-  }
-  
-  // 获取黑名单大小
-  getBlacklistSize(): number {
-    return this.blacklist.size;
-  }
-}
-
 const rateLimiter = new RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS);
-const ipBlacklist = new IPBlacklist(3, 3600000); // 3次可疑请求后封禁1小时
 
 const getContentType = (path: string): string => {
   const ext = path.split('.').pop()?.toLowerCase() || '';
@@ -234,31 +174,6 @@ async function handleAPIRequest(req: Request): Promise<Response> {
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   logger.info('Request received', { url: req.url });
-  const clientIP = getClientIP(req);
-
-  // IP黑名单检查
-  if (ipBlacklist.isBlacklisted(clientIP)) {
-    logger.warn('Blocked request from blacklisted IP', { ip: clientIP });
-    return new Response(JSON.stringify({ error: 'Access Denied', status: 403 }), { 
-      status: 403,
-      headers: {
-        'content-type': 'application/json;charset=UTF-8',
-      }
-    });
-  }
-
-  // 安全检查：阻止对敏感文件的访问
-  const sensitivePatterns = [/^\/.env/, /^\/.git/, /^\/.config/, /^\/wp-config\.php/, /^\/config\.php/];
-  if (sensitivePatterns.some(pattern => pattern.test(url.pathname))) {
-    logger.warn('Blocked access to sensitive file', { path: url.pathname, ip: clientIP });
-    ipBlacklist.recordSuspiciousAttempt(clientIP);
-    return new Response(JSON.stringify({ error: 'Access Denied', status: 403 }), { 
-      status: 403,
-      headers: {
-        'content-type': 'application/json;charset=UTF-8',
-      }
-    });
-  }
 
   // WebSocket 处理
   if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
@@ -282,7 +197,6 @@ async function handleRequest(req: Request): Promise<Response> {
   if (url.pathname.startsWith('/v1beta') || req.headers.get('Authorization') || req.headers.get('X-Goog-Api-Key')) {
     return handleAPIRequest(req);
   }
-  
   // 静态文件处理
   try {
     let filePath = url.pathname;
@@ -295,18 +209,10 @@ async function handleRequest(req: Request): Promise<Response> {
     const file = await Deno.readFile(fullPath);
     const contentType = getContentType(filePath);
 
-    // 添加安全响应头
-    const securityHeaders = {
-      'content-type': `${contentType};charset=UTF-8`,
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
-      'Referrer-Policy': 'no-referrer-when-downgrade',
-      'Cache-Control': 'no-store',
-    };
-
     return new Response(file, {
-      headers: securityHeaders,
+      headers: {
+        'content-type': `${contentType};charset=UTF-8`,
+      },
     });
   } catch (e) {
     logger.error('Static file request error', { error: e, url: req.url });
@@ -333,18 +239,4 @@ function getClientIP(req: Request): string {
   return req.url;
 }
 
-// 定期清理过期的黑名单记录
-function startCleanupTasks() {
-  // 每小时清理一次过期的黑名单记录
-  setInterval(() => {
-    const beforeCount = ipBlacklist.getBlacklistSize();
-    ipBlacklist.cleanupExpired();
-    const afterCount = ipBlacklist.getBlacklistSize();
-    if (beforeCount !== afterCount) {
-      logger.info(`Cleaned up expired blacklist entries`, { removed: beforeCount - afterCount });
-    }
-  }, 3600000);
-}
-
 Deno.serve(handleRequest);
-startCleanupTasks();
