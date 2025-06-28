@@ -1,4 +1,3 @@
-/// <reference types="https://deno.land/x/deno/runtime/mod.ts" />
 // @ts-nocheck
 // 直接使用 Deno.serve 提供 HTTP 服务
 
