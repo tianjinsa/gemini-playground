@@ -1,2 +1,23 @@
-name = "gemini" # 你的 Worker 名称，例如：gemini-proxy
-main = "src/cloudflare_worker.ts" # 指向你的 Worker 代码文件
+# Cloudflare Workers 部署脚本
+name = "gemini"
+main = "src/worker.js"
+compatibility_date = "2024-06-28"
+
+# KV命名空间配置
+kv_namespaces = [
+  { binding = "STATIC_ASSETS", id = "请替换为您创建的KV ID" }
+]
+
+# 环境变量配置
+[vars]
+ADMIN_TOKEN = "change-this-in-production"
+
+# 开发环境配置
+[dev]
+port = 8787
+local_protocol = "http"
+
+# 触发器配置 - 将服务绑定到路由
+[[triggers]]
+type = "http"
+pattern = "*/*"
