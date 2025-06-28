@@ -54,6 +54,24 @@ wrangler deploy
 
 Wrangler 会将你的 `src/cloudflare_worker.ts` 文件打包并部署到 Cloudflare。部署成功后，你将获得一个 Worker URL。
 
+### 4.1. 部署错误排查：Missing entry-point
+
+如果你遇到 `✘ [ERROR] Missing entry-point: The entry-point should be specified via the command line (e.g. wrangler deploy path/to/script) or the main config field.` 错误，请检查以下几点：
+
+1.  **`wrangler.toml` 文件是否存在？**
+    *   确保在你的项目根目录（`d:/code/github/gemini-playground`）下存在一个名为 `wrangler.toml` 的文件。如果不存在，请创建它并复制上述配置。
+2.  **`main` 字段是否正确？**
+    *   打开 `wrangler.toml` 文件，确认 `main = "src/cloudflare_worker.ts"` 这一行是否存在且路径正确。请注意，路径是相对于 `wrangler.toml` 文件所在的目录。
+
+### 4.2. Wrangler 版本过时警告
+
+如果你看到 `▲ [WARNING] The version of Wrangler you are using is now out-of-date.` 警告，建议你更新 Wrangler CLI 到最新版本：
+
+```bash
+npm install --save-dev wrangler@latest
+```
+更新后，使用 `npx wrangler deploy` 来运行最新版本的 Wrangler。
+
 ## 5. Cloudflare Pages 部署设置 (针对前端静态文件)
 
 如果你计划将前端静态文件（如 `index.html`, `css/style.css`, `js/main.js`, `favicon.ico`）部署到 Cloudflare Pages，请参考以下设置：

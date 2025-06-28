@@ -1,0 +1,2 @@
+name = "gemini" # 你的 Worker 名称，例如：gemini-proxy
+main = "src/cloudflare_worker.ts" # 指向你的 Worker 代码文件
